@@ -483,6 +483,30 @@ class MainWindow(QMainWindow):
 
         # Body
         layout.addWidget(QLabel("Body:"))
+
+        # Formatting toolbar
+        fmt_layout = QHBoxLayout()
+        btn_bold = QPushButton("B")
+        btn_bold.setFixedWidth(32)
+        btn_bold.setStyleSheet("font-weight: bold;")
+        btn_bold.setToolTip("Bold")
+        btn_bold.clicked.connect(lambda: self._insert_format("**", "**", "bold text"))
+
+        btn_italic = QPushButton("I")
+        btn_italic.setFixedWidth(32)
+        btn_italic.setStyleSheet("font-style: italic;")
+        btn_italic.setToolTip("Italic")
+        btn_italic.clicked.connect(lambda: self._insert_format("*", "*", "italic text"))
+
+        btn_link = QPushButton("Link")
+        btn_link.setToolTip("Insert link")
+        btn_link.clicked.connect(self._insert_link)
+
+        for btn in (btn_bold, btn_italic, btn_link):
+            fmt_layout.addWidget(btn)
+        fmt_layout.addStretch()
+        layout.addLayout(fmt_layout)
+
         self._body_edit = QTextEdit()
         layout.addWidget(self._body_edit)
 
@@ -632,6 +656,44 @@ class MainWindow(QMainWindow):
         btn_close.clicked.connect(dlg.accept)
         dlg_layout.addWidget(btn_close)
         dlg.exec()
+
+    def _insert_format(self, prefix: str, suffix: str, placeholder: str) -> None:
+        """Wrap the selected text (or insert placeholder) with markdown formatting."""
+        cursor = self._body_edit.textCursor()
+        selected = cursor.selectedText()
+        if selected:
+            cursor.insertText(f"{prefix}{selected}{suffix}")
+        else:
+            cursor.insertText(f"{prefix}{placeholder}{suffix}")
+            # Select the placeholder so the user can type over it
+            cursor.movePosition(
+                cursor.MoveOperation.Left, cursor.MoveMode.MoveAnchor, len(suffix)
+            )
+            cursor.movePosition(
+                cursor.MoveOperation.Left, cursor.MoveMode.KeepAnchor, len(placeholder)
+            )
+            self._body_edit.setTextCursor(cursor)
+        self._body_edit.setFocus()
+
+    def _insert_link(self) -> None:
+        """Prompt for a URL and insert a markdown link."""
+        cursor = self._body_edit.textCursor()
+        selected = cursor.selectedText()
+        link_text = selected if selected else "link text"
+
+        url, ok = QInputDialog.getText(self, "Insert Link", "URL:")
+        if not ok or not url.strip():
+            return
+
+        cursor.insertText(f"[{link_text}]({url.strip()})")
+        if not selected:
+            # Select "link text" so the user can type over it
+            pos = cursor.position()
+            url_part_len = len(f"]({url.strip()})")
+            cursor.setPosition(pos - url_part_len - len(link_text))
+            cursor.setPosition(pos - url_part_len, cursor.MoveMode.KeepAnchor)
+            self._body_edit.setTextCursor(cursor)
+        self._body_edit.setFocus()
 
     def _on_new_topic(self) -> None:
         """Prompt for a new topic name."""
