@@ -36,6 +36,21 @@ _DEFAULT_CSV = _PROJECT_DIR / "contacts.csv"
 _TEMPLATES_DIR = _PROJECT_DIR / "templates"
 
 
+class _ExcelTable(QTableWidget):
+    """QTableWidget that moves down on Enter, like Excel."""
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        """Commit the current edit and move down on Enter/Return."""
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            current = self.currentIndex()
+            super().keyPressEvent(event)  # let the table commit the edit
+            next_row = current.row() + 1
+            if next_row < self.rowCount():
+                self.setCurrentCell(next_row, current.column())
+        else:
+            super().keyPressEvent(event)
+
+
 class MainWindow(QMainWindow):
     """MailMerge main window with Contacts, Templates, and Send tabs."""
 
@@ -85,7 +100,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_layout)
 
         # Table
-        self._contacts_table = QTableWidget()
+        self._contacts_table = _ExcelTable()
         self._contacts_table.horizontalHeader().setStretchLastSection(True)
         self._contacts_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
@@ -125,7 +140,28 @@ class MainWindow(QMainWindow):
                 table.setItem(r, c, item)
 
         table.blockSignals(False)
+        self._apply_language_combos()
         self._validate_all_rows()
+
+    def _apply_language_combos(self) -> None:
+        """Place a persistent QComboBox in each language cell."""
+        if "language" not in self._headers:
+            return
+        col = self._headers.index("language")
+        languages = template_manager.list_languages(_TEMPLATES_DIR)
+        table = self._contacts_table
+        for r in range(table.rowCount()):
+            current = table.item(r, col)
+            current_val = current.text() if current else ""
+            combo = QComboBox()
+            combo.addItems(languages)
+            idx = combo.findText(current_val)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            combo.currentTextChanged.connect(
+                lambda _text, row=r: self._on_cell_changed(row, col)
+            )
+            table.setCellWidget(r, col, combo)
 
     def _validate_all_rows(self) -> None:
         """Highlight invalid rows in the contacts table."""
@@ -151,8 +187,12 @@ class MainWindow(QMainWindow):
         table = self._contacts_table
         result: dict[str, str] = {}
         for c, header in enumerate(self._headers):
-            item = table.item(row_index, c)
-            result[header] = item.text() if item else ""
+            widget = table.cellWidget(row_index, c)
+            if isinstance(widget, QComboBox):
+                result[header] = widget.currentText()
+            else:
+                item = table.item(row_index, c)
+                result[header] = item.text() if item else ""
         return result
 
     def _table_to_rows(self) -> list[dict[str, str]]:
@@ -182,8 +222,19 @@ class MainWindow(QMainWindow):
         table.blockSignals(True)
         r = table.rowCount()
         table.insertRow(r)
+        lang_col = (
+            self._headers.index("language") if "language" in self._headers else -1
+        )
         for c, header in enumerate(self._headers):
-            table.setItem(r, c, QTableWidgetItem(""))
+            if c == lang_col:
+                combo = QComboBox()
+                combo.addItems(template_manager.list_languages(_TEMPLATES_DIR))
+                combo.currentTextChanged.connect(
+                    lambda _text, row=r: self._on_cell_changed(row, lang_col)
+                )
+                table.setCellWidget(r, c, combo)
+            else:
+                table.setItem(r, c, QTableWidgetItem(""))
         table.blockSignals(False)
         self._validate_all_rows()
 
