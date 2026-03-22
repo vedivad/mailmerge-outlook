@@ -8,6 +8,3 @@ Wir sind ueberzeugt, dass sich hier eine ausgezeichnete Moeglichkeit zur Zusamme
 
 Bitte teilen Sie uns Ihre Verfuegbarkeit mit, damit wir einen Termin koordinieren koennen.
 Klick [hier](www.example.com) um unsere offenen Zeitfenster einzusehen.
-
-Mit freundlichen Gruessen,
-Das MailMerge-Team

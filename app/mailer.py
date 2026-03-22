@@ -48,9 +48,28 @@ def send_email(
         outlook_app = win32com.client.Dispatch("Outlook.Application")  # type: ignore[possibly-undefined]
 
     mail = outlook_app.CreateItem(0)  # 0 = olMailItem
+    # Accessing GetInspector triggers Outlook to populate the default signature
+    # without displaying a window.
+    _ = mail.GetInspector  # noqa: B018
+    signature_html = mail.HTMLBody or ""
+
+    # Insert our content before the signature. Outlook wraps the signature in
+    # a full HTML document; we inject our body right after the <body> tag.
+    if "<body" in signature_html.lower():
+        import re
+
+        mail.HTMLBody = re.sub(
+            r"(<body[^>]*>)",
+            rf"\1{html_body}",
+            signature_html,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    else:
+        mail.HTMLBody = html_body + signature_html
+
     mail.To = to
     mail.Subject = subject
-    mail.HTMLBody = html_body
     mail.Send()
 
 
