@@ -185,12 +185,19 @@ class MainWindow(QMainWindow):
         # Headers excluding "language" — language is determined by sub-tab
         self._headers: list[str] = []
         self._loading_template: bool = False
+        self._loading_contacts: bool = False
 
         tabs = QTabWidget()
         tabs.addTab(self._build_contacts_tab(), "Contacts")
         tabs.addTab(self._build_templates_tab(), "Templates")
         tabs.addTab(self._build_send_tab(), "Send")
         self.setCentralWidget(tabs)
+
+        # Contacts auto-save timer (debounce 500ms)
+        self._contacts_save_timer = QTimer()
+        self._contacts_save_timer.setSingleShot(True)
+        self._contacts_save_timer.setInterval(500)
+        self._contacts_save_timer.timeout.connect(self._auto_save_contacts)
 
         # Load initial data
         self._load_csv(self._contacts_path)
@@ -207,18 +214,22 @@ class MainWindow(QMainWindow):
 
         # Buttons
         btn_layout = QHBoxLayout()
-        btn_load = QPushButton("Load CSV")
-        btn_save = QPushButton("Save CSV")
+        btn_import = QPushButton("Import CSV")
+        btn_export = QPushButton("Export CSV")
         btn_add = QPushButton("Add Row")
         btn_del = QPushButton("Delete Row")
         btn_add_col = QPushButton("Add Column")
-        btn_load.clicked.connect(self._on_load_csv)
-        btn_save.clicked.connect(self._on_save_csv)
+        btn_import.clicked.connect(self._on_import_csv)
+        btn_export.clicked.connect(self._on_export_csv)
         btn_add.clicked.connect(self._on_add_row)
         btn_del.clicked.connect(self._on_delete_row)
         btn_add_col.clicked.connect(self._on_add_column)
-        for btn in (btn_load, btn_save, btn_add, btn_del, btn_add_col):
+        for btn in (btn_import, btn_export, btn_add, btn_del, btn_add_col):
             btn_layout.addWidget(btn)
+
+        self._contacts_save_status = QLabel()
+        btn_layout.addWidget(self._contacts_save_status)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
@@ -261,7 +272,9 @@ class MainWindow(QMainWindow):
         else:
             self._headers = []
 
+        self._loading_contacts = True
         self._rebuild_lang_tabs()
+        self._loading_contacts = False
 
     def _rebuild_lang_tabs(self) -> None:
         """Rebuild the language sub-tabs from current data."""
@@ -366,18 +379,38 @@ class MainWindow(QMainWindow):
 
     # -- Contacts slots --
 
-    def _on_load_csv(self) -> None:
-        """Open a file dialog and load a CSV."""
+    def _on_import_csv(self) -> None:
+        """Open a file dialog and import contacts from a CSV."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open CSV", str(_PROJECT_DIR), "CSV Files (*.csv)"
+            self, "Import CSV", str(_PROJECT_DIR), "CSV Files (*.csv)"
         )
         if path:
             self._load_csv(Path(path))
+            self._auto_save_contacts()
 
-    def _on_save_csv(self) -> None:
-        """Save all contacts (from all language tabs) back to CSV."""
+    def _on_export_csv(self) -> None:
+        """Export all contacts to a user-chosen CSV file."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export CSV", str(_PROJECT_DIR), "CSV Files (*.csv)"
+        )
+        if path:
+            rows = self._all_contacts()
+            contact_manager.save_csv(Path(path), rows)
+
+    def _schedule_contacts_save(self) -> None:
+        """Mark contacts as unsaved and restart the debounce timer."""
+        if self._loading_contacts:
+            return
+        self._contacts_save_status.setText("Unsaved...")
+        self._contacts_save_status.setStyleSheet("color: orange;")
+        self._contacts_save_timer.start()
+
+    def _auto_save_contacts(self) -> None:
+        """Save all contacts to the default CSV (called by debounce timer)."""
         rows = self._all_contacts()
         contact_manager.save_csv(self._contacts_path, rows)
+        self._contacts_save_status.setText("Saved")
+        self._contacts_save_status.setStyleSheet("color: gray;")
 
     def _on_add_row(self) -> None:
         """Append an empty row to the current language tab's table."""
@@ -391,6 +424,7 @@ class MainWindow(QMainWindow):
             table.setItem(r, c, QTableWidgetItem(""))
         table.blockSignals(False)
         self._validate_table(table)
+        self._schedule_contacts_save()
 
     def _on_delete_row(self) -> None:
         """Delete the currently selected row in the active language tab."""
@@ -401,6 +435,7 @@ class MainWindow(QMainWindow):
         if row >= 0:
             table.removeRow(row)
             self._validate_table(table)
+            self._schedule_contacts_save()
 
     def _on_add_column(self) -> None:
         """Add a new column (placeholder) to all language tables."""
@@ -424,9 +459,10 @@ class MainWindow(QMainWindow):
             for r in range(table.rowCount()):
                 table.setItem(r, col, QTableWidgetItem(""))
             table.blockSignals(False)
+        self._schedule_contacts_save()
 
     def _on_cell_changed(self, lang: str, row: int, _col: int) -> None:
-        """Re-validate the edited row."""
+        """Re-validate the edited row and schedule auto-save."""
         table = self._lang_tables.get(lang)
         if table is None:
             return
@@ -442,6 +478,7 @@ class MainWindow(QMainWindow):
                 else:
                     item.setData(Qt.ItemDataRole.BackgroundRole, None)
                 item.setToolTip(tooltip)
+        self._schedule_contacts_save()
 
     # ------------------------------------------------------------------
     # Templates tab
