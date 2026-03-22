@@ -1,0 +1,12 @@
+Nachfassung: Partnerschaft mit {company}
+
+Sehr geehrte/r {name},
+
+vielen Dank fuer unser kuerzliches Gespraech ueber die Zusammenarbeit zwischen unseren Organisationen. Wie besprochen moechten wir die naechsten Schritte bezueglich {company} einleiten.
+
+Wir sind ueberzeugt, dass sich hier eine ausgezeichnete Moeglichkeit zur Zusammenarbeit bietet, und wuerden gerne ein weiteres Treffen vereinbaren.
+
+Bitte teilen Sie uns Ihre Verfuegbarkeit mit, damit wir einen Termin koordinieren koennen.
+
+Mit freundlichen Gruessen,
+Das MailMerge-Team

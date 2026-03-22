@@ -1,0 +1,1 @@
+"""MailMerge application package."""

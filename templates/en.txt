@@ -1,0 +1,12 @@
+Follow-up: {company} Partnership
+
+Dear {name},
+
+Thank you for our recent conversation about the partnership between our organizations. As discussed, we would like to move forward with the next steps regarding {company}.
+
+We believe there is a strong opportunity for collaboration and would love to schedule a follow-up meeting at your earliest convenience.
+
+Please let us know your availability and we will coordinate accordingly.
+
+Best regards,
+The MailMerge Team
