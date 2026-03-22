@@ -312,9 +312,9 @@ class MainWindow(QMainWindow):
         self._lang_tabs.blockSignals(False)
 
     def _populate_table(self, table: _ExcelTable, rows: list[dict[str, str]]) -> None:
-        """Fill a table from a list of row dicts (without the language column)."""
+        """Fill a table from a list of row dicts, plus an empty sentinel row at the end."""
         table.blockSignals(True)
-        table.setRowCount(len(rows))
+        table.setRowCount(len(rows) + 1)  # +1 for sentinel
         table.setColumnCount(len(self._headers))
         table.setHorizontalHeaderLabels(self._headers)
 
@@ -323,15 +323,29 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(row.get(header, ""))
                 table.setItem(r, c, item)
 
+        # Sentinel row — empty placeholder cells
+        self._init_sentinel_row(table, len(rows))
+
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         table.blockSignals(False)
         self._validate_table(table)
 
+    def _init_sentinel_row(self, table: _ExcelTable, row: int) -> None:
+        """Set up the empty sentinel row with greyed-out placeholder style."""
+        for c in range(len(self._headers)):
+            item = QTableWidgetItem("")
+            item.setForeground(QColor(180, 180, 180))
+            table.setItem(row, c, item)
+
+    def _data_row_count(self, table: _ExcelTable) -> int:
+        """Return the number of data rows (excluding the sentinel row)."""
+        return max(0, table.rowCount() - 1)
+
     def _validate_table(self, table: _ExcelTable) -> None:
-        """Highlight invalid rows in a contacts table."""
+        """Highlight invalid rows in a contacts table (skip sentinel)."""
         err_bg = QColor(255, 80, 80, 60)
 
-        for r in range(table.rowCount()):
+        for r in range(self._data_row_count(table)):
             row_dict = self._table_row_to_dict(table, r)
             errors = self._validate_contact(row_dict)
             tooltip = "; ".join(errors) if errors else ""
@@ -366,12 +380,12 @@ class MainWindow(QMainWindow):
         return result
 
     def _all_contacts(self) -> list[dict[str, str]]:
-        """Gather all contacts from all language tabs, with language added."""
+        """Gather all contacts from all language tabs, with language added (skip sentinel)."""
         rows: list[dict[str, str]] = []
         for i in range(self._lang_tabs.count()):
             lang = self._lang_tabs.tabText(i)
             table = self._lang_tables[lang]
-            for r in range(table.rowCount()):
+            for r in range(self._data_row_count(table)):
                 row = self._table_row_to_dict(table, r)
                 row["language"] = lang
                 rows.append(row)
@@ -413,26 +427,27 @@ class MainWindow(QMainWindow):
         self._contacts_save_status.setStyleSheet("color: gray;")
 
     def _on_add_row(self) -> None:
-        """Append an empty row to the current language tab's table."""
+        """Insert an empty row before the sentinel in the current language tab."""
         table = self._current_table()
         if table is None:
             return
         table.blockSignals(True)
-        r = table.rowCount()
+        r = self._data_row_count(table)  # insert before sentinel
         table.insertRow(r)
         for c in range(len(self._headers)):
             table.setItem(r, c, QTableWidgetItem(""))
         table.blockSignals(False)
+        table.setCurrentCell(r, 0)
         self._validate_table(table)
         self._schedule_contacts_save()
 
     def _on_delete_row(self) -> None:
-        """Delete the currently selected row in the active language tab."""
+        """Delete the currently selected row (not the sentinel) in the active language tab."""
         table = self._current_table()
         if table is None:
             return
         row = table.currentRow()
-        if row >= 0:
+        if 0 <= row < self._data_row_count(table):
             table.removeRow(row)
             self._validate_table(table)
             self._schedule_contacts_save()
@@ -462,10 +477,35 @@ class MainWindow(QMainWindow):
         self._schedule_contacts_save()
 
     def _on_cell_changed(self, lang: str, row: int, _col: int) -> None:
-        """Re-validate the edited row and schedule auto-save."""
+        """Re-validate the edited row, promote sentinel if typed into, and auto-save."""
         table = self._lang_tables.get(lang)
         if table is None:
             return
+
+        # If the user typed into the sentinel (last) row, promote it to a data row
+        sentinel_row = table.rowCount() - 1
+        if row == sentinel_row:
+            row_dict = self._table_row_to_dict(table, row)
+            if any(v.strip() for v in row_dict.values()):
+                table.blockSignals(True)
+                # Reset foreground color on the promoted row
+                for c in range(table.columnCount()):
+                    item = table.item(row, c)
+                    if item:
+                        item.setData(Qt.ItemDataRole.ForegroundRole, None)
+                # Append a new sentinel row
+                new_sentinel = table.rowCount()
+                table.insertRow(new_sentinel)
+                self._init_sentinel_row(table, new_sentinel)
+                table.blockSignals(False)
+                # Move cursor down to the new sentinel
+                col = table.currentColumn()
+                QTimer.singleShot(0, lambda: table.setCurrentCell(new_sentinel, col))
+
+        # Skip validation for the sentinel row
+        if row >= self._data_row_count(table):
+            return
+
         row_dict = self._table_row_to_dict(table, row)
         errors = self._validate_contact(row_dict)
         err_bg = QColor(255, 80, 80, 60)
