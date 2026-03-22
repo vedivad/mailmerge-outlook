@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -216,15 +216,11 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         btn_import = QPushButton("Import CSV")
         btn_export = QPushButton("Export CSV")
-        btn_add = QPushButton("Add Row")
-        btn_del = QPushButton("Delete Row")
         btn_add_col = QPushButton("Add Column")
         btn_import.clicked.connect(self._on_import_csv)
         btn_export.clicked.connect(self._on_export_csv)
-        btn_add.clicked.connect(self._on_add_row)
-        btn_del.clicked.connect(self._on_delete_row)
         btn_add_col.clicked.connect(self._on_add_column)
-        for btn in (btn_import, btn_export, btn_add, btn_del, btn_add_col):
+        for btn in (btn_import, btn_export, btn_add_col):
             btn_layout.addWidget(btn)
 
         self._contacts_save_status = QLabel()
@@ -254,6 +250,10 @@ class MainWindow(QMainWindow):
         table = _ExcelTable()
         table.cellChanged.connect(
             lambda row, col: self._on_cell_changed(lang, row, col)
+        )
+        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table.customContextMenuRequested.connect(
+            lambda pos, t=table: self._on_table_context_menu(t, pos)
         )
         self._lang_tables[lang] = table
         return table
@@ -426,27 +426,22 @@ class MainWindow(QMainWindow):
         self._contacts_save_status.setText("Saved")
         self._contacts_save_status.setStyleSheet("color: gray;")
 
-    def _on_add_row(self) -> None:
-        """Insert an empty row before the sentinel in the current language tab."""
-        table = self._current_table()
-        if table is None:
-            return
-        table.blockSignals(True)
-        r = self._data_row_count(table)  # insert before sentinel
-        table.insertRow(r)
-        for c in range(len(self._headers)):
-            table.setItem(r, c, QTableWidgetItem(""))
-        table.blockSignals(False)
-        table.setCurrentCell(r, 0)
-        self._validate_table(table)
-        self._schedule_contacts_save()
+    def _on_table_context_menu(self, table: _ExcelTable, pos) -> None:
+        """Show a right-click context menu for the contacts table."""
+        from PyQt6.QtWidgets import QMenu
 
-    def _on_delete_row(self) -> None:
-        """Delete the currently selected row (not the sentinel) in the active language tab."""
-        table = self._current_table()
-        if table is None:
+        row = table.rowAt(pos.y())
+        if row < 0 or row >= self._data_row_count(table):
             return
-        row = table.currentRow()
+
+        menu = QMenu(table)
+        delete_action = QAction("Delete Row", table)
+        delete_action.triggered.connect(lambda: self._delete_row(table, row))
+        menu.addAction(delete_action)
+        menu.exec(table.viewport().mapToGlobal(pos))
+
+    def _delete_row(self, table: _ExcelTable, row: int) -> None:
+        """Delete a specific row from a contacts table."""
         if 0 <= row < self._data_row_count(table):
             table.removeRow(row)
             self._validate_table(table)
