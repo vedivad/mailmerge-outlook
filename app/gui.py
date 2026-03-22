@@ -110,7 +110,8 @@ class MainWindow(QMainWindow):
     def _font_kwargs(self) -> dict[str, str]:
         """Return the current font settings as kwargs for render_html."""
         return {
-            "font_family": self._font_combo.currentText(),
+            "font_family": self._font_combo.currentData()
+            or self._font_combo.currentText(),
             "font_size": self._font_size_combo.currentText(),
         }
 
@@ -545,22 +546,22 @@ class MainWindow(QMainWindow):
         # Formatting toolbar
         fmt_layout = QHBoxLayout()
 
-        # Font family selector
+        # Font family selector — display name + full CSS font-family as data
         self._font_combo = QComboBox()
         self._font_combo.setToolTip("Schriftart")
-        for font in [
-            "Calibri",
-            "Arial",
-            "Verdana",
-            "Tahoma",
-            "Segoe UI",
-            "Times New Roman",
-            "Georgia",
-            "Courier New",
-            "Trebuchet MS",
-            "Aptos",
+        for label, css in [
+            ("Calibri", '"Calibri", Arial, sans-serif'),
+            ("Arial", '"Arial", sans-serif'),
+            ("Verdana", '"Verdana", sans-serif'),
+            ("Tahoma", '"Tahoma", sans-serif'),
+            ("Segoe UI", '"Segoe UI", sans-serif'),
+            ("Aptos", '"Aptos", sans-serif'),
+            ("Trebuchet MS", '"Trebuchet MS", sans-serif'),
+            ("Times New Roman", '"Times New Roman", serif'),
+            ("Georgia", '"Georgia", serif'),
+            ("Courier New", '"Courier New", monospace'),
         ]:
-            self._font_combo.addItem(font)
+            self._font_combo.addItem(label, css)
         self._font_combo.setCurrentText("Calibri")
         fmt_layout.addWidget(self._font_combo)
 

@@ -200,8 +200,10 @@ def send_email(
     safe_body = html_body.encode("ascii", "xmlcharrefreplace").decode("ascii")
 
     meta = '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">'
+    # Reset paragraph margins for Outlook's MsoNormal class used in signatures
+    sig_style = "<style>p.MsoNormal, li.MsoNormal, div.MsoNormal { margin: 0; }</style>"
     mail.HTMLBody = (
-        f"<html><head>{meta}</head><body>{safe_body}{sig_body}</body></html>"
+        f"<html><head>{meta}{sig_style}</head><body>{safe_body}{sig_body}</body></html>"
     )
     _debug("HTMLBody OK")
 
