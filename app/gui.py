@@ -550,16 +550,16 @@ class MainWindow(QMainWindow):
         self._font_combo = QComboBox()
         self._font_combo.setToolTip("Schriftart")
         for label, css in [
-            ("Calibri", '"Calibri", Arial, sans-serif'),
-            ("Arial", '"Arial", sans-serif'),
-            ("Verdana", '"Verdana", sans-serif'),
-            ("Tahoma", '"Tahoma", sans-serif'),
-            ("Segoe UI", '"Segoe UI", sans-serif'),
-            ("Aptos", '"Aptos", sans-serif'),
-            ("Trebuchet MS", '"Trebuchet MS", sans-serif'),
-            ("Times New Roman", '"Times New Roman", serif'),
-            ("Georgia", '"Georgia", serif'),
-            ("Courier New", '"Courier New", monospace'),
+            ("Calibri", "'Calibri', Arial, sans-serif"),
+            ("Arial", "'Arial', sans-serif"),
+            ("Verdana", "'Verdana', sans-serif"),
+            ("Tahoma", "'Tahoma', sans-serif"),
+            ("Segoe UI", "'Segoe UI', sans-serif"),
+            ("Aptos", "'Aptos', sans-serif"),
+            ("Trebuchet MS", "'Trebuchet MS', sans-serif"),
+            ("Times New Roman", "'Times New Roman', serif"),
+            ("Georgia", "'Georgia', serif"),
+            ("Courier New", "'Courier New', monospace"),
         ]:
             self._font_combo.addItem(label, css)
         self._font_combo.setCurrentText("Calibri")
