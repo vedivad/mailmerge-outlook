@@ -91,6 +91,8 @@ def render_html(
     topic: str | None = None,
     templates_dir: Path = TEMPLATES_DIR,
     use_cid: bool = False,
+    font_family: str = "Calibri, Arial, sans-serif",
+    font_size: str = "11pt",
 ) -> str:
     """Convert markdown-formatted *text* to an HTML email body.
 
@@ -115,7 +117,7 @@ def render_html(
         html_body = re.sub(r'src="image:([^"]+)"', _replace_image, html_body)
 
     return (
-        '<div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt;">'
+        f'<div style="font-family: {font_family}; font-size: {font_size};">'
         f"{html_body}"
         "</div>"
     )

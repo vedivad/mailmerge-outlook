@@ -107,6 +107,13 @@ class MainWindow(QMainWindow):
 
         return widget
 
+    def _font_kwargs(self) -> dict[str, str]:
+        """Return the current font settings as kwargs for render_html."""
+        return {
+            "font_family": self._font_combo.currentText(),
+            "font_size": self._font_size_combo.currentText(),
+        }
+
     def _current_lang(self) -> str:
         """Return the language code of the currently selected contacts sub-tab."""
         return self._lang_tabs.tabText(self._lang_tabs.currentIndex())
@@ -537,6 +544,34 @@ class MainWindow(QMainWindow):
 
         # Formatting toolbar
         fmt_layout = QHBoxLayout()
+
+        # Font family selector
+        self._font_combo = QComboBox()
+        self._font_combo.setToolTip("Schriftart")
+        for font in [
+            "Calibri",
+            "Arial",
+            "Verdana",
+            "Tahoma",
+            "Segoe UI",
+            "Times New Roman",
+            "Georgia",
+            "Courier New",
+            "Trebuchet MS",
+            "Aptos",
+        ]:
+            self._font_combo.addItem(font)
+        self._font_combo.setCurrentText("Calibri")
+        fmt_layout.addWidget(self._font_combo)
+
+        # Font size selector
+        self._font_size_combo = QComboBox()
+        self._font_size_combo.setToolTip("Schriftgroesse")
+        for size in ["8pt", "9pt", "10pt", "11pt", "12pt", "14pt", "16pt", "18pt"]:
+            self._font_size_combo.addItem(size)
+        self._font_size_combo.setCurrentText("11pt")
+        fmt_layout.addWidget(self._font_size_combo)
+
         btn_bold = QPushButton("B")
         btn_bold.setFixedWidth(32)
         btn_bold.setStyleSheet("font-weight: bold;")
@@ -699,7 +734,7 @@ class MainWindow(QMainWindow):
             return
         topic = self._topic_combo.currentText()
         html = template_manager.render_html(
-            body, topic=topic, templates_dir=TEMPLATES_DIR
+            body, topic=topic, templates_dir=TEMPLATES_DIR, **self._font_kwargs()
         )
         dlg = QDialog(self)
         dlg.setWindowTitle("Vorlagenvorschau")
@@ -995,7 +1030,7 @@ class MainWindow(QMainWindow):
             return
 
         html_body = template_manager.render_html(
-            body, topic=topic, templates_dir=TEMPLATES_DIR
+            body, topic=topic, templates_dir=TEMPLATES_DIR, **self._font_kwargs()
         )
 
         preview = QDialog(self)
@@ -1108,7 +1143,11 @@ class MainWindow(QMainWindow):
                 continue
 
             html_body = template_manager.render_html(
-                body, topic=topic, templates_dir=TEMPLATES_DIR, use_cid=True
+                body,
+                topic=topic,
+                templates_dir=TEMPLATES_DIR,
+                use_cid=True,
+                **self._font_kwargs(),
             )
 
             # Collect image paths for embedding
