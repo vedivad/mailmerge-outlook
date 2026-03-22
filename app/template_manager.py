@@ -85,17 +85,49 @@ def save_template(
     return path
 
 
-def render_html(text: str) -> str:
+def render_html(
+    text: str,
+    topic: str | None = None,
+    templates_dir: Path = TEMPLATES_DIR,
+    use_cid: bool = False,
+) -> str:
     """Convert markdown-formatted *text* to an HTML email body.
 
-    Supports links, bold, italic, paragraphs, and line breaks.
+    Supports links, bold, italic, paragraphs, line breaks, and images.
+
+    ``image:filename.png`` references are resolved to either ``file://``
+    paths (for local preview) or ``cid:`` references (for sending via Outlook).
     """
+    import re
+
     html_body = _md.markdown(text, extensions=["nl2br"])
+
+    # Resolve image:filename references
+    if topic:
+        images_dir = templates_dir / topic / "images"
+
+        def _replace_image(match: re.Match) -> str:
+            filename = match.group(1)
+            if use_cid:
+                return f'src="cid:{filename}"'
+            local_path = images_dir / filename
+            return f'src="file:///{local_path.as_posix()}"'
+
+        html_body = re.sub(r'src="image:([^"]+)"', _replace_image, html_body)
+
     return (
         '<div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt;">'
         f"{html_body}"
         "</div>"
     )
+
+
+def list_images(topic: str, templates_dir: Path = TEMPLATES_DIR) -> list[str]:
+    """Return image filenames referenced by ``image:`` in a topic's images folder."""
+    images_dir = templates_dir / topic / "images"
+    if not images_dir.is_dir():
+        return []
+    return sorted(p.name for p in images_dir.iterdir() if p.is_file())
 
 
 def extract_placeholders(text: str) -> list[str]:

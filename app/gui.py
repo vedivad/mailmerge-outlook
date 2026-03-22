@@ -502,7 +502,11 @@ class MainWindow(QMainWindow):
         btn_link.setToolTip("Insert link")
         btn_link.clicked.connect(self._insert_link)
 
-        for btn in (btn_bold, btn_italic, btn_link):
+        btn_image = QPushButton("Image")
+        btn_image.setToolTip("Insert image")
+        btn_image.clicked.connect(self._insert_image)
+
+        for btn in (btn_bold, btn_italic, btn_link, btn_image):
             fmt_layout.addWidget(btn)
         fmt_layout.addStretch()
         layout.addLayout(fmt_layout)
@@ -640,7 +644,10 @@ class MainWindow(QMainWindow):
         body = self._body_edit.toPlainText()
         if not body.strip():
             return
-        html = template_manager.render_html(body)
+        topic = self._topic_combo.currentText()
+        html = template_manager.render_html(
+            body, topic=topic, templates_dir=_TEMPLATES_DIR
+        )
         dlg = QDialog(self)
         dlg.setWindowTitle("Template Preview")
         dlg.resize(500, 400)
@@ -710,6 +717,49 @@ class MainWindow(QMainWindow):
             return
 
         cursor.insertText(f"[{link_text}]({url})")
+        self._body_edit.setFocus()
+
+    def _insert_image(self) -> None:
+        """Pick an image file, copy it to the topic's images folder, and insert a reference."""
+        topic = self._topic_combo.currentText()
+        if not topic:
+            QMessageBox.information(self, "Image", "Select a topic first.")
+            return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Image",
+            "",
+            "Images (*.png *.jpg *.jpeg *.gif *.bmp)",
+        )
+        if not path:
+            return
+
+        src = Path(path)
+        images_dir = _TEMPLATES_DIR / topic / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+
+        import shutil
+
+        dest = images_dir / src.name
+        if dest.exists():
+            reply = QMessageBox.question(
+                self,
+                "Image exists",
+                f"'{src.name}' already exists. Overwrite?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        shutil.copy2(src, dest)
+
+        desc, ok = QInputDialog.getText(
+            self, "Image Description", "Description (for accessibility):"
+        )
+        desc = desc.strip() if ok and desc.strip() else src.stem
+
+        cursor = self._body_edit.textCursor()
+        cursor.insertText(f"![{desc}](image:{src.name})")
         self._body_edit.setFocus()
 
     def _on_new_topic(self) -> None:
@@ -879,7 +929,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Preview", f"Missing placeholder value: {exc}")
             return
 
-        html_body = template_manager.render_html(body)
+        html_body = template_manager.render_html(
+            body, topic=topic, templates_dir=_TEMPLATES_DIR
+        )
 
         preview = QDialog(self)
         preview.setWindowTitle("Email Preview")
@@ -989,7 +1041,18 @@ class MainWindow(QMainWindow):
                 QApplication.processEvents()
                 continue
 
-            html_body = template_manager.render_html(body)
+            html_body = template_manager.render_html(
+                body, topic=topic, templates_dir=_TEMPLATES_DIR, use_cid=True
+            )
+
+            # Collect image paths for embedding
+            import re as _re
+
+            images_dir = _TEMPLATES_DIR / topic / "images"
+            image_filenames = _re.findall(r'src="cid:([^"]+)"', html_body)
+            image_paths = [
+                images_dir / fn for fn in image_filenames if (images_dir / fn).exists()
+            ]
 
             # Send or dry-run
             if dry_run:
@@ -999,7 +1062,11 @@ class MainWindow(QMainWindow):
             else:
                 try:
                     mailer.send_email(
-                        email, subject, html_body, outlook_app=outlook_app
+                        email,
+                        subject,
+                        html_body,
+                        outlook_app=outlook_app,
+                        image_paths=image_paths,
                     )
                     self._log_msg(f"SENT {email}")
                     sent += 1

@@ -18,6 +18,7 @@ def send_email(
     subject: str,
     html_body: str,
     outlook_app: object | None = None,
+    image_paths: list | None = None,
 ) -> None:
     """Send an HTML email through Outlook.
 
@@ -28,10 +29,13 @@ def send_email(
     subject:
         Email subject line.
     html_body:
-        Email body as HTML.
+        Email body as HTML. Images should use ``cid:filename`` references.
     outlook_app:
         An existing ``win32com.client.Dispatch('Outlook.Application')``
         instance.  If *None*, a new one is created.
+    image_paths:
+        List of ``pathlib.Path`` objects for images to embed. Each image is
+        attached with a Content-ID matching its filename.
 
     Raises
     ------
@@ -70,6 +74,16 @@ def send_email(
 
     mail.To = to
     mail.Subject = subject
+
+    # Embed images as hidden attachments with Content-ID references
+    if image_paths:
+        for img_path in image_paths:
+            attachment = mail.Attachments.Add(str(img_path))
+            attachment.PropertyAccessor.SetProperty(
+                "http://schemas.microsoft.com/mapi/proptag/0x3712001F",
+                img_path.name,
+            )
+
     mail.Send()
 
 
