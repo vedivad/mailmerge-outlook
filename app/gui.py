@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
 
         self._contacts_path: Path = _DEFAULT_CSV
         self._rows: list[dict[str, str]] = []
+        # Headers excluding "language" — language is determined by sub-tab
         self._headers: list[str] = []
 
         tabs = QTabWidget()
@@ -79,7 +80,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_contacts_tab(self) -> QWidget:
-        """Build the Contacts tab with an editable table and action buttons."""
+        """Build the Contacts tab with language sub-tabs and action buttons."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
@@ -100,19 +101,35 @@ class MainWindow(QMainWindow):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
-        # Table
-        self._contacts_table = _ExcelTable()
-        self._contacts_table.horizontalHeader().setStretchLastSection(True)
-        self._contacts_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
-        self._contacts_table.cellChanged.connect(self._on_cell_changed)
-        layout.addWidget(self._contacts_table)
+        # Language sub-tabs — one table per language
+        self._lang_tabs = QTabWidget()
+        self._lang_tables: dict[str, _ExcelTable] = {}
+        layout.addWidget(self._lang_tabs)
 
         return widget
 
+    def _current_lang(self) -> str:
+        """Return the language code of the currently selected contacts sub-tab."""
+        return self._lang_tabs.tabText(self._lang_tabs.currentIndex())
+
+    def _current_table(self) -> _ExcelTable | None:
+        """Return the table for the currently selected language tab."""
+        lang = self._current_lang()
+        return self._lang_tables.get(lang)
+
+    def _make_table(self, lang: str) -> _ExcelTable:
+        """Create a new table widget for a language tab."""
+        table = _ExcelTable()
+        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.cellChanged.connect(
+            lambda row, col: self._on_cell_changed(lang, row, col)
+        )
+        self._lang_tables[lang] = table
+        return table
+
     def _load_csv(self, path: Path) -> None:
-        """Load a CSV file into the contacts table."""
+        """Load a CSV file into the contacts tables, split by language."""
         try:
             self._rows = contact_manager.load_csv(path)
         except FileNotFoundError:
@@ -121,58 +138,68 @@ class MainWindow(QMainWindow):
 
         self._contacts_path = path
         if self._rows:
-            self._headers = list(self._rows[0].keys())
+            self._headers = [h for h in self._rows[0].keys() if h != "language"]
         else:
             self._headers = []
 
-        self._populate_table()
+        self._rebuild_lang_tabs()
 
-    def _populate_table(self) -> None:
-        """Fill the QTableWidget from ``self._rows``."""
-        table = self._contacts_table
+    def _rebuild_lang_tabs(self) -> None:
+        """Rebuild the language sub-tabs from current data."""
+        self._lang_tabs.blockSignals(True)
+        self._lang_tabs.clear()
+        self._lang_tables.clear()
+
+        languages = template_manager.list_languages(_TEMPLATES_DIR)
+
+        # Group rows by language
+        rows_by_lang: dict[str, list[dict[str, str]]] = {lang: [] for lang in languages}
+        for row in self._rows:
+            lang = row.get("language", "")
+            if lang not in rows_by_lang:
+                rows_by_lang[lang] = []
+            rows_by_lang[lang].append(row)
+
+        # Create a tab for each language
+        for lang in languages:
+            table = self._make_table(lang)
+            self._populate_table(table, rows_by_lang.get(lang, []))
+            self._lang_tabs.addTab(table, lang)
+
+        # If there are rows with unknown languages, put them in an "other" tab
+        other_rows = []
+        for lang, rows in rows_by_lang.items():
+            if lang not in languages:
+                other_rows.extend(rows)
+        if other_rows:
+            table = self._make_table("other")
+            self._populate_table(table, other_rows)
+            self._lang_tabs.addTab(table, "other")
+
+        self._lang_tabs.blockSignals(False)
+
+    def _populate_table(self, table: _ExcelTable, rows: list[dict[str, str]]) -> None:
+        """Fill a table from a list of row dicts (without the language column)."""
         table.blockSignals(True)
-        table.setRowCount(len(self._rows))
+        table.setRowCount(len(rows))
         table.setColumnCount(len(self._headers))
         table.setHorizontalHeaderLabels(self._headers)
 
-        for r, row in enumerate(self._rows):
+        for r, row in enumerate(rows):
             for c, header in enumerate(self._headers):
                 item = QTableWidgetItem(row.get(header, ""))
                 table.setItem(r, c, item)
 
         table.blockSignals(False)
-        self._apply_language_combos()
-        self._validate_all_rows()
+        self._validate_table(table)
 
-    def _apply_language_combos(self) -> None:
-        """Place a persistent QComboBox in each language cell."""
-        if "language" not in self._headers:
-            return
-        col = self._headers.index("language")
-        languages = template_manager.list_languages(_TEMPLATES_DIR)
-        table = self._contacts_table
-        for r in range(table.rowCount()):
-            current = table.item(r, col)
-            current_val = current.text() if current else ""
-            combo = QComboBox()
-            combo.addItems(languages)
-            idx = combo.findText(current_val)
-            if idx >= 0:
-                combo.setCurrentIndex(idx)
-            combo.currentTextChanged.connect(
-                lambda _text, row=r: self._on_cell_changed(row, col)
-            )
-            table.setCellWidget(r, col, combo)
-
-    def _validate_all_rows(self) -> None:
-        """Highlight invalid rows in the contacts table."""
-        languages = template_manager.list_languages(_TEMPLATES_DIR)
-        table = self._contacts_table
+    def _validate_table(self, table: _ExcelTable) -> None:
+        """Highlight invalid rows in a contacts table."""
         err_bg = QColor(255, 80, 80, 60)
 
         for r in range(table.rowCount()):
-            row_dict = self._table_row_to_dict(r)
-            errors = contact_manager.validate_row(row_dict, languages)
+            row_dict = self._table_row_to_dict(table, r)
+            errors = self._validate_contact(row_dict)
             tooltip = "; ".join(errors) if errors else ""
             for c in range(table.columnCount()):
                 item = table.item(r, c)
@@ -183,24 +210,38 @@ class MainWindow(QMainWindow):
                         item.setData(Qt.ItemDataRole.BackgroundRole, None)
                     item.setToolTip(tooltip)
 
-    def _table_row_to_dict(self, row_index: int) -> dict[str, str]:
-        """Convert a table row back to a dict keyed by column headers."""
-        table = self._contacts_table
+    @staticmethod
+    def _validate_contact(row: dict[str, str]) -> list[str]:
+        """Validate a contact row (language is always valid from the tab)."""
+        import re
+
+        errors: list[str] = []
+        email = row.get("email", "").strip()
+        if not email:
+            errors.append("Email is missing")
+        elif not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            errors.append(f"Email is malformed: {email}")
+        return errors
+
+    def _table_row_to_dict(self, table: _ExcelTable, row_index: int) -> dict[str, str]:
+        """Convert a table row to a dict keyed by column headers."""
         result: dict[str, str] = {}
         for c, header in enumerate(self._headers):
-            widget = table.cellWidget(row_index, c)
-            if isinstance(widget, QComboBox):
-                result[header] = widget.currentText()
-            else:
-                item = table.item(row_index, c)
-                result[header] = item.text() if item else ""
+            item = table.item(row_index, c)
+            result[header] = item.text() if item else ""
         return result
 
-    def _table_to_rows(self) -> list[dict[str, str]]:
-        """Convert the entire table to a list of dicts."""
-        return [
-            self._table_row_to_dict(r) for r in range(self._contacts_table.rowCount())
-        ]
+    def _all_contacts(self) -> list[dict[str, str]]:
+        """Gather all contacts from all language tabs, with language added."""
+        rows: list[dict[str, str]] = []
+        for i in range(self._lang_tabs.count()):
+            lang = self._lang_tabs.tabText(i)
+            table = self._lang_tables[lang]
+            for r in range(table.rowCount()):
+                row = self._table_row_to_dict(table, r)
+                row["language"] = lang
+                rows.append(row)
+        return rows
 
     # -- Contacts slots --
 
@@ -213,41 +254,35 @@ class MainWindow(QMainWindow):
             self._load_csv(Path(path))
 
     def _on_save_csv(self) -> None:
-        """Save the current table back to CSV."""
-        self._rows = self._table_to_rows()
-        contact_manager.save_csv(self._contacts_path, self._rows)
+        """Save all contacts (from all language tabs) back to CSV."""
+        rows = self._all_contacts()
+        contact_manager.save_csv(self._contacts_path, rows)
 
     def _on_add_row(self) -> None:
-        """Append an empty row to the table."""
-        table = self._contacts_table
+        """Append an empty row to the current language tab's table."""
+        table = self._current_table()
+        if table is None:
+            return
         table.blockSignals(True)
         r = table.rowCount()
         table.insertRow(r)
-        lang_col = (
-            self._headers.index("language") if "language" in self._headers else -1
-        )
-        for c, header in enumerate(self._headers):
-            if c == lang_col:
-                combo = QComboBox()
-                combo.addItems(template_manager.list_languages(_TEMPLATES_DIR))
-                combo.currentTextChanged.connect(
-                    lambda _text, row=r: self._on_cell_changed(row, lang_col)
-                )
-                table.setCellWidget(r, c, combo)
-            else:
-                table.setItem(r, c, QTableWidgetItem(""))
+        for c in range(len(self._headers)):
+            table.setItem(r, c, QTableWidgetItem(""))
         table.blockSignals(False)
-        self._validate_all_rows()
+        self._validate_table(table)
 
     def _on_delete_row(self) -> None:
-        """Delete the currently selected row."""
-        row = self._contacts_table.currentRow()
+        """Delete the currently selected row in the active language tab."""
+        table = self._current_table()
+        if table is None:
+            return
+        row = table.currentRow()
         if row >= 0:
-            self._contacts_table.removeRow(row)
-            self._validate_all_rows()
+            table.removeRow(row)
+            self._validate_table(table)
 
     def _on_add_column(self) -> None:
-        """Add a new column (placeholder) to the contacts table."""
+        """Add a new column (placeholder) to all language tables."""
         name, ok = QInputDialog.getText(
             self, "Add Column", "Column name (e.g. title, department):"
         )
@@ -260,25 +295,27 @@ class MainWindow(QMainWindow):
             )
             return
         self._headers.append(name)
-        table = self._contacts_table
-        table.blockSignals(True)
-        col = table.columnCount()
-        table.setColumnCount(col + 1)
-        table.setHorizontalHeaderLabels(self._headers)
-        for r in range(table.rowCount()):
-            table.setItem(r, col, QTableWidgetItem(""))
-        table.blockSignals(False)
-        self._validate_all_rows()
+        # Add the column to every language table
+        for table in self._lang_tables.values():
+            table.blockSignals(True)
+            col = table.columnCount()
+            table.setColumnCount(col + 1)
+            table.setHorizontalHeaderLabels(self._headers)
+            for r in range(table.rowCount()):
+                table.setItem(r, col, QTableWidgetItem(""))
+            table.blockSignals(False)
 
-    def _on_cell_changed(self, row: int, _col: int) -> None:
+    def _on_cell_changed(self, lang: str, row: int, _col: int) -> None:
         """Re-validate the edited row."""
-        languages = template_manager.list_languages(_TEMPLATES_DIR)
-        row_dict = self._table_row_to_dict(row)
-        errors = contact_manager.validate_row(row_dict, languages)
+        table = self._lang_tables.get(lang)
+        if table is None:
+            return
+        row_dict = self._table_row_to_dict(table, row)
+        errors = self._validate_contact(row_dict)
         err_bg = QColor(255, 80, 80, 60)
         tooltip = "; ".join(errors) if errors else ""
-        for c in range(self._contacts_table.columnCount()):
-            item = self._contacts_table.item(row, c)
+        for c in range(table.columnCount()):
+            item = table.item(row, c)
             if item:
                 if errors:
                     item.setBackground(err_bg)
@@ -334,7 +371,7 @@ class MainWindow(QMainWindow):
         return widget
 
     def _refresh_languages(self) -> None:
-        """Reload the language combo box from disk."""
+        """Reload the language combo box and contacts sub-tabs from disk."""
         self._lang_combo.blockSignals(True)
         self._lang_combo.clear()
         langs = template_manager.list_languages(_TEMPLATES_DIR)
@@ -343,6 +380,9 @@ class MainWindow(QMainWindow):
         if langs:
             self._lang_combo.setCurrentIndex(0)
             self._on_language_changed(langs[0])
+
+        # Also refresh contacts sub-tabs to pick up new languages
+        self._rebuild_lang_tabs()
 
     def _on_language_changed(self, lang: str) -> None:
         """Load the selected language template into the editor fields."""
@@ -474,32 +514,27 @@ class MainWindow(QMainWindow):
 
     def _on_preview(self) -> None:
         """Show a preview of the resolved email for the selected contact."""
-        row_idx = self._contacts_table.currentRow()
-        if row_idx < 0:
+        table = self._current_table()
+        if table is None or table.currentRow() < 0:
             QMessageBox.information(self, "Preview", "Select a contact row first.")
             return
 
-        row = self._table_row_to_dict(row_idx)
-        lang = row.get("language", "")
+        row_idx = table.currentRow()
+        lang = self._current_lang()
+        row = self._table_row_to_dict(table, row_idx)
+        row["language"] = lang
+
         try:
             tpl = template_manager.load_template(lang, _TEMPLATES_DIR)
         except FileNotFoundError:
-            QMessageBox.warning(
-                self,
-                "Preview",
-                f"No template for language '{lang}'.",
-            )
+            QMessageBox.warning(self, "Preview", f"No template for language '{lang}'.")
             return
 
         try:
             subject = tpl["subject"].format(**row)
             body = tpl["body"].format(**row)
         except KeyError as exc:
-            QMessageBox.warning(
-                self,
-                "Preview",
-                f"Missing placeholder value: {exc}",
-            )
+            QMessageBox.warning(self, "Preview", f"Missing placeholder value: {exc}")
             return
 
         dlg = QDialog(self)
@@ -518,32 +553,37 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_send_all(self) -> None:
-        """Send emails to all contacts."""
-        rows = self._table_to_rows()
+        """Send emails to all contacts across all language tabs."""
+        rows = self._all_contacts()
         self._send_emails(rows)
 
     def _on_send_selected(self) -> None:
-        """Send emails to selected contacts only."""
-        selected_rows = sorted(
-            {idx.row() for idx in self._contacts_table.selectedIndexes()}
-        )
+        """Send emails to selected contacts in the current language tab."""
+        table = self._current_table()
+        if table is None:
+            return
+        lang = self._current_lang()
+        selected_rows = sorted({idx.row() for idx in table.selectedIndexes()})
         if not selected_rows:
             QMessageBox.information(
                 self, "Send", "Select one or more contact rows first."
             )
             return
-        rows = [self._table_row_to_dict(r) for r in selected_rows]
+        rows = []
+        for r in selected_rows:
+            row = self._table_row_to_dict(table, r)
+            row["language"] = lang
+            rows.append(row)
         self._send_emails(rows)
 
     def _send_emails(self, rows: list[dict[str, str]]) -> None:
         """Execute the send loop for *rows* (dry-run or real)."""
         dry_run = self._dry_run_cb.isChecked()
-        languages = template_manager.list_languages(_TEMPLATES_DIR)
 
         # Validate first
         invalid_rows: list[tuple[int, list[str]]] = []
         for i, row in enumerate(rows):
-            errors = contact_manager.validate_row(row, languages)
+            errors = self._validate_contact(row)
             if errors:
                 invalid_rows.append((i + 1, errors))
 
