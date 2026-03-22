@@ -9,12 +9,13 @@ Each .txt file has the format:
   Line 3+:   Body (may contain {placeholders})
 """
 
+import re
 import string
 from pathlib import Path
 
 import markdown as _md
 
-TEMPLATES_DIR: Path = Path(__file__).resolve().parent.parent / "templates"
+from app.config import TEMPLATES_DIR
 
 
 def list_topics(templates_dir: Path = TEMPLATES_DIR) -> list[str]:
@@ -98,8 +99,6 @@ def render_html(
     ``image:filename.png`` references are resolved to either ``file://``
     paths (for local preview) or ``cid:`` references (for sending via Outlook).
     """
-    import re
-
     html_body = _md.markdown(text, extensions=["nl2br"])
 
     # Resolve image:filename references

@@ -1,11 +1,14 @@
 """Main application window with Contacts, Templates, and Send tabs."""
 
+import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -17,12 +20,12 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QSizePolicy,
     QTabWidget,
-    QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
@@ -30,146 +33,8 @@ from PyQt6.QtWidgets import (
 )
 
 from app import contact_manager, mailer, template_manager
-
-# Paths relative to project root
-_PROJECT_DIR = Path(__file__).resolve().parent.parent
-_DEFAULT_CSV = _PROJECT_DIR / "contacts.csv"
-_TEMPLATES_DIR = _PROJECT_DIR / "templates"
-
-
-class _ExcelTable(QTableWidget):
-    """QTableWidget that moves down on Enter, like Excel."""
-
-    def keyPressEvent(self, event) -> None:  # noqa: N802
-        """Commit the current edit and move down on Enter/Return."""
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            row = self.currentRow()
-            col = self.currentColumn()
-            super().keyPressEvent(event)
-            next_row = row + 1
-            if next_row < self.rowCount():
-                QTimer.singleShot(0, lambda: self.setCurrentCell(next_row, col))
-        else:
-            super().keyPressEvent(event)
-
-
-class _ContactPickerDialog(QDialog):
-    """Dialog for picking one or more contacts with search filtering."""
-
-    def __init__(
-        self,
-        contacts: list[dict[str, str]],
-        multi_select: bool = True,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Select Contacts" if multi_select else "Select Contact")
-        self.resize(600, 450)
-        self._contacts = contacts
-        self._multi_select = multi_select
-        self._checkboxes: list[QCheckBox] = []
-        self._selected: list[dict[str, str]] = []
-
-        layout = QVBoxLayout(self)
-
-        # Search bar
-        self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter contacts...")
-        self._search.textChanged.connect(self._apply_filter)
-        layout.addWidget(self._search)
-
-        # Select all (multi-select only)
-        if multi_select:
-            self._select_all_cb = QCheckBox("Select all")
-            self._select_all_cb.stateChanged.connect(self._on_select_all)
-            layout.addWidget(self._select_all_cb)
-
-        # Contact list as table with checkboxes / radio-style selection
-        headers = list(contacts[0].keys()) if contacts else []
-        self._table = QTableWidget(
-            len(contacts), len(headers) + (1 if multi_select else 0)
-        )
-
-        if multi_select:
-            self._table.setHorizontalHeaderLabels([""] + headers)
-        else:
-            self._table.setHorizontalHeaderLabels(headers)
-            self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-            self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-
-        for r, contact in enumerate(contacts):
-            col_offset = 0
-            if multi_select:
-                cb = QCheckBox()
-                container = QWidget()
-                lay = QHBoxLayout(container)
-                lay.addWidget(cb)
-                lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                lay.setContentsMargins(0, 0, 0, 0)
-                self._table.setCellWidget(r, 0, container)
-                self._checkboxes.append(cb)
-                col_offset = 1
-
-            for c, header in enumerate(headers):
-                item = QTableWidgetItem(contact.get(header, ""))
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self._table.setItem(r, c + col_offset, item)
-
-        if multi_select:
-            self._table.horizontalHeader().setSectionResizeMode(
-                0, QHeaderView.ResizeMode.ResizeToContents
-            )
-            for c in range(1, self._table.columnCount()):
-                self._table.horizontalHeader().setSectionResizeMode(
-                    c, QHeaderView.ResizeMode.Stretch
-                )
-        else:
-            self._table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeMode.Stretch
-            )
-
-        layout.addWidget(self._table)
-
-        # Buttons
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._on_accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def _apply_filter(self, text: str) -> None:
-        """Show/hide rows based on the search text."""
-        text = text.lower()
-        for r, contact in enumerate(self._contacts):
-            values = " ".join(contact.values()).lower()
-            visible = text in values
-            self._table.setRowHidden(r, not visible)
-
-    def _on_select_all(self, state: int) -> None:
-        """Toggle all visible checkboxes."""
-        checked = state == Qt.CheckState.Checked.value
-        for r, cb in enumerate(self._checkboxes):
-            if not self._table.isRowHidden(r):
-                cb.setChecked(checked)
-
-    def _on_accept(self) -> None:
-        """Collect selected contacts and accept the dialog."""
-        if self._multi_select:
-            self._selected = [
-                self._contacts[r]
-                for r, cb in enumerate(self._checkboxes)
-                if cb.isChecked()
-            ]
-        else:
-            rows = self._table.selectionModel().selectedRows()
-            if rows:
-                self._selected = [self._contacts[rows[0].row()]]
-        self.accept()
-
-    def selected_contacts(self) -> list[dict[str, str]]:
-        """Return the contacts chosen by the user."""
-        return self._selected
+from app.config import DEFAULT_CSV, PROJECT_DIR, TEMPLATES_DIR
+from app.widgets import ContactPickerDialog, ExcelTable
 
 
 class MainWindow(QMainWindow):
@@ -180,7 +45,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("MailMerge")
         self.resize(900, 620)
 
-        self._contacts_path: Path = _DEFAULT_CSV
+        self._contacts_path: Path = DEFAULT_CSV
         self._rows: list[dict[str, str]] = []
         # Headers excluding "language" — language is determined by sub-tab
         self._headers: list[str] = []
@@ -237,7 +102,7 @@ class MainWindow(QMainWindow):
 
         # Language sub-tabs — one table per language
         self._lang_tabs = QTabWidget()
-        self._lang_tables: dict[str, _ExcelTable] = {}
+        self._lang_tables: dict[str, ExcelTable] = {}
         # Track sort state per language tab: {lang: (col, ascending)}
         self._sort_state: dict[str, tuple[int, bool]] = {}
         layout.addWidget(self._lang_tabs)
@@ -248,14 +113,14 @@ class MainWindow(QMainWindow):
         """Return the language code of the currently selected contacts sub-tab."""
         return self._lang_tabs.tabText(self._lang_tabs.currentIndex())
 
-    def _current_table(self) -> _ExcelTable | None:
+    def _current_table(self) -> ExcelTable | None:
         """Return the table for the currently selected language tab."""
         lang = self._current_lang()
         return self._lang_tables.get(lang)
 
-    def _make_table(self, lang: str) -> _ExcelTable:
+    def _make_table(self, lang: str) -> ExcelTable:
         """Create a new table widget for a language tab."""
-        table = _ExcelTable()
+        table = ExcelTable()
         table.cellChanged.connect(
             lambda row, col: self._on_cell_changed(lang, row, col)
         )
@@ -294,7 +159,7 @@ class MainWindow(QMainWindow):
         self._lang_tables.clear()
 
         # Union of languages across all topics
-        languages = template_manager.list_languages(templates_dir=_TEMPLATES_DIR)
+        languages = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
 
         # Group rows by language
         rows_by_lang: dict[str, list[dict[str, str]]] = {lang: [] for lang in languages}
@@ -322,7 +187,7 @@ class MainWindow(QMainWindow):
 
         self._lang_tabs.blockSignals(False)
 
-    def _populate_table(self, table: _ExcelTable, rows: list[dict[str, str]]) -> None:
+    def _populate_table(self, table: ExcelTable, rows: list[dict[str, str]]) -> None:
         """Fill a table from a list of row dicts, plus an empty sentinel row at the end."""
         table.blockSignals(True)
         table.setRowCount(len(rows) + 1)  # +1 for sentinel
@@ -341,24 +206,38 @@ class MainWindow(QMainWindow):
         table.blockSignals(False)
         self._validate_table(table)
 
-    def _init_sentinel_row(self, table: _ExcelTable, row: int) -> None:
+    def _init_sentinel_row(self, table: ExcelTable, row: int) -> None:
         """Set up the empty sentinel row with greyed-out placeholder style."""
         for c in range(len(self._headers)):
             item = QTableWidgetItem("")
             item.setForeground(QColor(180, 180, 180))
             table.setItem(row, c, item)
 
-    def _data_row_count(self, table: _ExcelTable) -> int:
+    def _data_row_count(self, table: ExcelTable) -> int:
         """Return the number of data rows (excluding the sentinel row)."""
         return max(0, table.rowCount() - 1)
 
-    def _validate_table(self, table: _ExcelTable) -> None:
+    def _lang_for_table(self, table: ExcelTable) -> str:
+        """Return the language code associated with a table widget."""
+        for lang, t in self._lang_tables.items():
+            if t is table:
+                return lang
+        return ""
+
+    def _validate_row_dict(self, row_dict: dict[str, str], lang: str) -> list[str]:
+        """Validate a contact row, injecting the language from the tab."""
+        row_with_lang = {**row_dict, "language": lang}
+        languages = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
+        return contact_manager.validate_row(row_with_lang, languages)
+
+    def _validate_table(self, table: ExcelTable) -> None:
         """Highlight invalid rows in a contacts table (skip sentinel)."""
         err_bg = QColor(255, 80, 80, 60)
+        lang = self._lang_for_table(table)
 
         for r in range(self._data_row_count(table)):
             row_dict = self._table_row_to_dict(table, r)
-            errors = self._validate_contact(row_dict)
+            errors = self._validate_row_dict(row_dict, lang)
             tooltip = "; ".join(errors) if errors else ""
             for c in range(table.columnCount()):
                 item = table.item(r, c)
@@ -369,20 +248,7 @@ class MainWindow(QMainWindow):
                         item.setData(Qt.ItemDataRole.BackgroundRole, None)
                     item.setToolTip(tooltip)
 
-    @staticmethod
-    def _validate_contact(row: dict[str, str]) -> list[str]:
-        """Validate a contact row (language is always valid from the tab)."""
-        import re
-
-        errors: list[str] = []
-        email = row.get("email", "").strip()
-        if not email:
-            errors.append("Email is missing")
-        elif not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
-            errors.append(f"Email is malformed: {email}")
-        return errors
-
-    def _table_row_to_dict(self, table: _ExcelTable, row_index: int) -> dict[str, str]:
+    def _table_row_to_dict(self, table: ExcelTable, row_index: int) -> dict[str, str]:
         """Convert a table row to a dict keyed by column headers."""
         result: dict[str, str] = {}
         for c, header in enumerate(self._headers):
@@ -407,7 +273,7 @@ class MainWindow(QMainWindow):
     def _on_import_csv(self) -> None:
         """Open a file dialog and import contacts from a CSV."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Import CSV", str(_PROJECT_DIR), "CSV Files (*.csv)"
+            self, "Import CSV", str(PROJECT_DIR), "CSV Files (*.csv)"
         )
         if path:
             self._load_csv(Path(path))
@@ -416,7 +282,7 @@ class MainWindow(QMainWindow):
     def _on_export_csv(self) -> None:
         """Export all contacts to a user-chosen CSV file."""
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export CSV", str(_PROJECT_DIR), "CSV Files (*.csv)"
+            self, "Export CSV", str(PROJECT_DIR), "CSV Files (*.csv)"
         )
         if path:
             rows = self._all_contacts()
@@ -437,10 +303,8 @@ class MainWindow(QMainWindow):
         self._contacts_save_status.setText("Saved")
         self._contacts_save_status.setStyleSheet("color: gray;")
 
-    def _on_table_context_menu(self, table: _ExcelTable, pos) -> None:
+    def _on_table_context_menu(self, table: ExcelTable, pos) -> None:
         """Show a right-click context menu for the contacts table."""
-        from PyQt6.QtWidgets import QMenu
-
         row = table.rowAt(pos.y())
         if row < 0 or row >= self._data_row_count(table):
             return
@@ -451,7 +315,7 @@ class MainWindow(QMainWindow):
         menu.addAction(delete_action)
         menu.exec(table.viewport().mapToGlobal(pos))
 
-    def _delete_row(self, table: _ExcelTable, row: int) -> None:
+    def _delete_row(self, table: ExcelTable, row: int) -> None:
         """Delete a specific row from a contacts table."""
         if 0 <= row < self._data_row_count(table):
             table.removeRow(row)
@@ -513,7 +377,7 @@ class MainWindow(QMainWindow):
             return
 
         row_dict = self._table_row_to_dict(table, row)
-        errors = self._validate_contact(row_dict)
+        errors = self._validate_row_dict(row_dict, lang)
         err_bg = QColor(255, 80, 80, 60)
         tooltip = "; ".join(errors) if errors else ""
         for c in range(table.columnCount()):
@@ -573,7 +437,7 @@ class MainWindow(QMainWindow):
     def _on_contacts_filter_changed(self, text: str) -> None:
         """Show/hide rows across all language tables based on search text."""
         text = text.lower()
-        for lang, table in self._lang_tables.items():
+        for _lang, table in self._lang_tables.items():
             data_count = self._data_row_count(table)
             for r in range(data_count):
                 row_text = " ".join(
@@ -690,7 +554,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_templates(self) -> None:
         """Reload topic/language combos and contacts sub-tabs from disk."""
-        topics = template_manager.list_topics(_TEMPLATES_DIR)
+        topics = template_manager.list_topics(TEMPLATES_DIR)
 
         # Topic combo
         prev_topic = self._topic_combo.currentText()
@@ -723,7 +587,7 @@ class MainWindow(QMainWindow):
         """Update the language combo when the topic changes."""
         if not topic:
             return
-        langs = template_manager.list_languages(topic, _TEMPLATES_DIR)
+        langs = template_manager.list_languages(topic, TEMPLATES_DIR)
         prev_lang = self._lang_combo.currentText()
         self._lang_combo.blockSignals(True)
         self._lang_combo.clear()
@@ -743,7 +607,7 @@ class MainWindow(QMainWindow):
         # Suppress auto-save while loading
         self._loading_template = True
         try:
-            tpl = template_manager.load_template(topic, lang, _TEMPLATES_DIR)
+            tpl = template_manager.load_template(topic, lang, TEMPLATES_DIR)
         except FileNotFoundError:
             self._subject_edit.clear()
             self._body_edit.clear()
@@ -759,7 +623,7 @@ class MainWindow(QMainWindow):
     def _on_template_edited(self) -> None:
         """Mark as unsaved and restart the debounce timer."""
         self._update_placeholder_label()
-        if getattr(self, "_loading_template", False):
+        if self._loading_template:
             return
         self._save_status_label.setText("Unsaved changes...")
         self._save_status_label.setStyleSheet("color: orange;")
@@ -776,7 +640,7 @@ class MainWindow(QMainWindow):
             lang,
             self._subject_edit.text(),
             self._body_edit.toPlainText(),
-            _TEMPLATES_DIR,
+            TEMPLATES_DIR,
         )
         self._save_status_label.setText("Saved")
         self._save_status_label.setStyleSheet("color: gray;")
@@ -788,7 +652,7 @@ class MainWindow(QMainWindow):
             return
         topic = self._topic_combo.currentText()
         html = template_manager.render_html(
-            body, topic=topic, templates_dir=_TEMPLATES_DIR
+            body, topic=topic, templates_dir=TEMPLATES_DIR
         )
         dlg = QDialog(self)
         dlg.setWindowTitle("Template Preview")
@@ -878,10 +742,8 @@ class MainWindow(QMainWindow):
             return
 
         src = Path(path)
-        images_dir = _TEMPLATES_DIR / topic / "images"
+        images_dir = TEMPLATES_DIR / topic / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
-
-        import shutil
 
         dest = images_dir / src.name
         if dest.exists():
@@ -911,9 +773,9 @@ class MainWindow(QMainWindow):
         )
         if ok and name.strip():
             name = name.strip().lower().replace(" ", "-")
-            langs = template_manager.list_languages(templates_dir=_TEMPLATES_DIR)
+            langs = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
             first_lang = langs[0] if langs else "en"
-            template_manager.save_template(name, first_lang, "", "", _TEMPLATES_DIR)
+            template_manager.save_template(name, first_lang, "", "", TEMPLATES_DIR)
             self._refresh_templates()
             self._topic_combo.setCurrentText(name)
 
@@ -927,7 +789,7 @@ class MainWindow(QMainWindow):
         )
         if ok and code.strip():
             code = code.strip().lower()
-            template_manager.save_template(topic, code, "", "", _TEMPLATES_DIR)
+            template_manager.save_template(topic, code, "", "", TEMPLATES_DIR)
             self._refresh_templates()
             self._topic_combo.setCurrentText(topic)
             self._lang_combo.setCurrentText(code)
@@ -1028,12 +890,13 @@ class MainWindow(QMainWindow):
     def _on_dry_run_toggled(self, checked: bool) -> None:
         """Enable or disable send buttons based on dry-run state and Outlook availability."""
         enabled = checked or mailer.OUTLOOK_AVAILABLE
-        for btn in (self._btn_send_sel,):
-            btn.setEnabled(enabled)
-            if not enabled:
-                btn.setToolTip("Outlook is not available — enable dry run to test")
-            else:
-                btn.setToolTip("")
+        self._btn_send_sel.setEnabled(enabled)
+        if not enabled:
+            self._btn_send_sel.setToolTip(
+                "Outlook is not available — enable dry run to test"
+            )
+        else:
+            self._btn_send_sel.setToolTip("")
 
     def _log_msg(self, message: str) -> None:
         """Append a timestamped message to the send log."""
@@ -1052,7 +915,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Preview", "No contacts loaded.")
             return
 
-        dlg = _ContactPickerDialog(contacts, multi_select=False, parent=self)
+        dlg = ContactPickerDialog(contacts, multi_select=False, parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         selected = dlg.selected_contacts()
@@ -1063,7 +926,7 @@ class MainWindow(QMainWindow):
         lang = row.get("language", "")
 
         try:
-            tpl = template_manager.load_template(topic, lang, _TEMPLATES_DIR)
+            tpl = template_manager.load_template(topic, lang, TEMPLATES_DIR)
         except FileNotFoundError:
             QMessageBox.warning(
                 self,
@@ -1080,7 +943,7 @@ class MainWindow(QMainWindow):
             return
 
         html_body = template_manager.render_html(
-            body, topic=topic, templates_dir=_TEMPLATES_DIR
+            body, topic=topic, templates_dir=TEMPLATES_DIR
         )
 
         preview = QDialog(self)
@@ -1105,7 +968,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Send", "No contacts loaded.")
             return
 
-        dlg = _ContactPickerDialog(contacts, multi_select=True, parent=self)
+        dlg = ContactPickerDialog(contacts, multi_select=True, parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         selected = dlg.selected_contacts()
@@ -1124,9 +987,10 @@ class MainWindow(QMainWindow):
         dry_run = self._dry_run_cb.isChecked()
 
         # Validate first
+        languages = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
         invalid_rows: list[tuple[int, list[str]]] = []
         for i, row in enumerate(rows):
-            errors = self._validate_contact(row)
+            errors = contact_manager.validate_row(row, languages)
             if errors:
                 invalid_rows.append((i + 1, errors))
 
@@ -1164,15 +1028,13 @@ class MainWindow(QMainWindow):
         self._log.clear()
         self._summary_label.clear()
 
-        from PyQt6.QtWidgets import QApplication
-
         for i, row in enumerate(rows):
             email = row.get("email", "")
             lang = row.get("language", "")
 
             # Load template for this topic + language
             try:
-                tpl = template_manager.load_template(topic, lang, _TEMPLATES_DIR)
+                tpl = template_manager.load_template(topic, lang, TEMPLATES_DIR)
             except FileNotFoundError:
                 self._log_msg(f"SKIPPED {email} — no '{topic}' template for '{lang}'")
                 skipped += 1
@@ -1192,14 +1054,12 @@ class MainWindow(QMainWindow):
                 continue
 
             html_body = template_manager.render_html(
-                body, topic=topic, templates_dir=_TEMPLATES_DIR, use_cid=True
+                body, topic=topic, templates_dir=TEMPLATES_DIR, use_cid=True
             )
 
             # Collect image paths for embedding
-            import re as _re
-
-            images_dir = _TEMPLATES_DIR / topic / "images"
-            image_filenames = _re.findall(r'src="cid:([^"]+)"', html_body)
+            images_dir = TEMPLATES_DIR / topic / "images"
+            image_filenames = re.findall(r'src="cid:([^"]+)"', html_body)
             image_paths = [
                 images_dir / fn for fn in image_filenames if (images_dir / fn).exists()
             ]

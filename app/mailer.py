@@ -5,6 +5,8 @@ successfully — ``OUTLOOK_AVAILABLE`` will be ``False`` and ``send_email``
 will raise ``RuntimeError``.
 """
 
+import os
+import re
 from pathlib import Path
 
 try:
@@ -21,8 +23,6 @@ def list_signatures() -> list[str]:
     Signatures are stored as files in ``%APPDATA%/Microsoft/Signatures/``.
     Returns an empty list on non-Windows platforms.
     """
-    import os
-
     appdata = os.environ.get("APPDATA", "")
     if not appdata:
         return []
@@ -34,8 +34,6 @@ def list_signatures() -> list[str]:
 
 def _load_signature_html(name: str) -> str:
     """Read the HTML content of a named Outlook signature."""
-    import os
-
     appdata = os.environ.get("APPDATA", "")
     if not appdata:
         return ""
@@ -87,8 +85,6 @@ def send_email(
 
     if outlook_app is None:
         outlook_app = win32com.client.Dispatch("Outlook.Application")  # type: ignore[possibly-undefined]
-
-    import re
 
     mail = outlook_app.CreateItem(0)  # 0 = olMailItem
 
