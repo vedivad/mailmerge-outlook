@@ -1,8 +1,12 @@
 """Load, save, and inspect email templates.
 
-Each template is a .txt file in the templates/ directory. The first line is
-the email subject, followed by a blank line, followed by the body. Both
-subject and body may contain {placeholder} fields that match CSV column names.
+Templates live in topic sub-folders of the templates/ directory. Each topic
+folder contains one .txt file per language (e.g. ``templates/partnership/en.txt``).
+
+Each .txt file has the format:
+  Line 1:    Subject (may contain {placeholders})
+  Line 2:    blank
+  Line 3+:   Body (may contain {placeholders})
 """
 
 import string
@@ -11,17 +15,44 @@ from pathlib import Path
 TEMPLATES_DIR: Path = Path(__file__).resolve().parent.parent / "templates"
 
 
-def list_languages(templates_dir: Path = TEMPLATES_DIR) -> list[str]:
-    """Return sorted language codes available in *templates_dir*."""
-    return sorted(p.stem for p in templates_dir.glob("*.txt"))
+def list_topics(templates_dir: Path = TEMPLATES_DIR) -> list[str]:
+    """Return sorted topic names (sub-folder names) in *templates_dir*."""
+    if not templates_dir.is_dir():
+        return []
+    return sorted(
+        p.name
+        for p in templates_dir.iterdir()
+        if p.is_dir() and not p.name.startswith(".")
+    )
 
 
-def load_template(lang: str, templates_dir: Path = TEMPLATES_DIR) -> dict[str, str]:
+def list_languages(
+    topic: str | None = None, templates_dir: Path = TEMPLATES_DIR
+) -> list[str]:
+    """Return sorted language codes available for a *topic*.
+
+    If *topic* is ``None``, return the union of languages across all topics.
+    """
+    if topic is not None:
+        topic_dir = templates_dir / topic
+        if not topic_dir.is_dir():
+            return []
+        return sorted(p.stem for p in topic_dir.glob("*.txt"))
+
+    langs: set[str] = set()
+    for topic_name in list_topics(templates_dir):
+        langs.update(list_languages(topic_name, templates_dir))
+    return sorted(langs)
+
+
+def load_template(
+    topic: str, lang: str, templates_dir: Path = TEMPLATES_DIR
+) -> dict[str, str]:
     """Load a template and return ``{'subject': ..., 'body': ...}``.
 
     Raises ``FileNotFoundError`` if the template file does not exist.
     """
-    path = templates_dir / f"{lang}.txt"
+    path = templates_dir / topic / f"{lang}.txt"
     text = path.read_text(encoding="utf-8")
     lines = text.split("\n")
 
@@ -38,14 +69,16 @@ def load_template(lang: str, templates_dir: Path = TEMPLATES_DIR) -> dict[str, s
 
 
 def save_template(
+    topic: str,
     lang: str,
     subject: str,
     body: str,
     templates_dir: Path = TEMPLATES_DIR,
 ) -> Path:
     """Write a template file and return its path."""
-    templates_dir.mkdir(parents=True, exist_ok=True)
-    path = templates_dir / f"{lang}.txt"
+    topic_dir = templates_dir / topic
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    path = topic_dir / f"{lang}.txt"
     path.write_text(f"{subject}\n\n{body}\n", encoding="utf-8")
     return path
 

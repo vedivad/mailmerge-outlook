@@ -73,7 +73,7 @@ class MainWindow(QMainWindow):
 
         # Load initial data
         self._load_csv(self._contacts_path)
-        self._refresh_languages()
+        self._refresh_templates()
 
     # ------------------------------------------------------------------
     # Contacts tab
@@ -148,7 +148,8 @@ class MainWindow(QMainWindow):
         self._lang_tabs.clear()
         self._lang_tables.clear()
 
-        languages = template_manager.list_languages(_TEMPLATES_DIR)
+        # Union of languages across all topics
+        languages = template_manager.list_languages(templates_dir=_TEMPLATES_DIR)
 
         # Group rows by language
         rows_by_lang: dict[str, list[dict[str, str]]] = {lang: [] for lang in languages}
@@ -185,15 +186,7 @@ class MainWindow(QMainWindow):
         table.setHorizontalHeaderLabels([""] + self._headers)
 
         for r, row in enumerate(rows):
-            # Checkbox widget centered in cell
-            cb = QCheckBox()
-            container = QWidget()
-            layout = QHBoxLayout(container)
-            layout.addWidget(cb)
-            layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.setContentsMargins(0, 0, 0, 0)
-            table.setCellWidget(r, 0, container)
-            # Data columns
+            self._set_checkbox(table, r)
             for c, header in enumerate(self._headers):
                 item = QTableWidgetItem(row.get(header, ""))
                 table.setItem(r, c + 1, item)
@@ -210,6 +203,17 @@ class MainWindow(QMainWindow):
         table.blockSignals(False)
         self._validate_table(table)
 
+    @staticmethod
+    def _set_checkbox(table: _ExcelTable, row: int) -> None:
+        """Place a centered checkbox widget in column 0 of *row*."""
+        cb = QCheckBox()
+        container = QWidget()
+        lay = QHBoxLayout(container)
+        lay.addWidget(cb)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.setContentsMargins(0, 0, 0, 0)
+        table.setCellWidget(row, 0, container)
+
     def _validate_table(self, table: _ExcelTable) -> None:
         """Highlight invalid rows in a contacts table."""
         err_bg = QColor(255, 80, 80, 60)
@@ -218,7 +222,7 @@ class MainWindow(QMainWindow):
             row_dict = self._table_row_to_dict(table, r)
             errors = self._validate_contact(row_dict)
             tooltip = "; ".join(errors) if errors else ""
-            for c in range(1, table.columnCount()):  # skip checkbox column
+            for c in range(1, table.columnCount()):
                 item = table.item(r, c)
                 if item:
                     if errors:
@@ -244,7 +248,7 @@ class MainWindow(QMainWindow):
         """Convert a table row to a dict keyed by column headers (skipping checkbox col)."""
         result: dict[str, str] = {}
         for c, header in enumerate(self._headers):
-            item = table.item(row_index, c + 1)  # +1 to skip checkbox column
+            item = table.item(row_index, c + 1)
             result[header] = item.text() if item else ""
         return result
 
@@ -258,6 +262,21 @@ class MainWindow(QMainWindow):
                 row = self._table_row_to_dict(table, r)
                 row["language"] = lang
                 rows.append(row)
+        return rows
+
+    def _checked_contacts(self) -> list[dict[str, str]]:
+        """Gather checked contacts from all language tabs."""
+        rows: list[dict[str, str]] = []
+        for i in range(self._lang_tabs.count()):
+            lang = self._lang_tabs.tabText(i)
+            table = self._lang_tables[lang]
+            for r in range(table.rowCount()):
+                container = table.cellWidget(r, 0)
+                cb = container.findChild(QCheckBox) if container else None
+                if cb and cb.isChecked():
+                    row = self._table_row_to_dict(table, r)
+                    row["language"] = lang
+                    rows.append(row)
         return rows
 
     # -- Contacts slots --
@@ -283,15 +302,7 @@ class MainWindow(QMainWindow):
         table.blockSignals(True)
         r = table.rowCount()
         table.insertRow(r)
-        # Checkbox widget
-        cb = QCheckBox()
-        container = QWidget()
-        layout = QHBoxLayout(container)
-        layout.addWidget(cb)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setContentsMargins(0, 0, 0, 0)
-        table.setCellWidget(r, 0, container)
-        # Data columns
+        self._set_checkbox(table, r)
         for c in range(len(self._headers)):
             table.setItem(r, c + 1, QTableWidgetItem(""))
         table.blockSignals(False)
@@ -321,7 +332,6 @@ class MainWindow(QMainWindow):
             )
             return
         self._headers.append(name)
-        # Add the column to every language table
         for table in self._lang_tables.values():
             table.blockSignals(True)
             col = table.columnCount()
@@ -340,7 +350,7 @@ class MainWindow(QMainWindow):
         errors = self._validate_contact(row_dict)
         err_bg = QColor(255, 80, 80, 60)
         tooltip = "; ".join(errors) if errors else ""
-        for c in range(1, table.columnCount()):  # skip checkbox column
+        for c in range(1, table.columnCount()):
             item = table.item(row, c)
             if item:
                 if errors:
@@ -354,19 +364,31 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_templates_tab(self) -> QWidget:
-        """Build the Templates tab with language selector and editor fields."""
+        """Build the Templates tab with topic/language selectors and editor fields."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Language selector row
+        # Topic + Language selector row
         sel_layout = QHBoxLayout()
+
+        sel_layout.addWidget(QLabel("Topic:"))
+        self._topic_combo = QComboBox()
+        self._topic_combo.currentTextChanged.connect(self._on_topic_changed)
+        sel_layout.addWidget(self._topic_combo)
+
+        btn_new_topic = QPushButton("New Topic")
+        btn_new_topic.clicked.connect(self._on_new_topic)
+        sel_layout.addWidget(btn_new_topic)
+
         sel_layout.addWidget(QLabel("Language:"))
         self._lang_combo = QComboBox()
-        self._lang_combo.currentTextChanged.connect(self._on_language_changed)
+        self._lang_combo.currentTextChanged.connect(self._on_template_selection_changed)
         sel_layout.addWidget(self._lang_combo)
+
         btn_new_lang = QPushButton("New Language")
         btn_new_lang.clicked.connect(self._on_new_language)
         sel_layout.addWidget(btn_new_lang)
+
         sel_layout.addStretch()
         layout.addLayout(sel_layout)
 
@@ -396,54 +418,111 @@ class MainWindow(QMainWindow):
 
         return widget
 
-    def _refresh_languages(self) -> None:
-        """Reload the language combo box and contacts sub-tabs from disk."""
-        self._lang_combo.blockSignals(True)
-        self._lang_combo.clear()
-        langs = template_manager.list_languages(_TEMPLATES_DIR)
-        self._lang_combo.addItems(langs)
-        self._lang_combo.blockSignals(False)
-        if langs:
-            self._lang_combo.setCurrentIndex(0)
-            self._on_language_changed(langs[0])
+    def _refresh_templates(self) -> None:
+        """Reload topic/language combos and contacts sub-tabs from disk."""
+        topics = template_manager.list_topics(_TEMPLATES_DIR)
 
-        # Also refresh contacts sub-tabs to pick up new languages
+        # Topic combo
+        prev_topic = self._topic_combo.currentText()
+        self._topic_combo.blockSignals(True)
+        self._topic_combo.clear()
+        self._topic_combo.addItems(topics)
+        self._topic_combo.blockSignals(False)
+
+        if prev_topic and prev_topic in topics:
+            self._topic_combo.setCurrentText(prev_topic)
+        elif topics:
+            self._topic_combo.setCurrentIndex(0)
+        self._on_topic_changed(self._topic_combo.currentText())
+
+        # Send tab topic combo
+        prev_send_topic = self._send_topic_combo.currentText()
+        self._send_topic_combo.blockSignals(True)
+        self._send_topic_combo.clear()
+        self._send_topic_combo.addItems(topics)
+        self._send_topic_combo.blockSignals(False)
+        if prev_send_topic and prev_send_topic in topics:
+            self._send_topic_combo.setCurrentText(prev_send_topic)
+        elif topics:
+            self._send_topic_combo.setCurrentIndex(0)
+
+        # Refresh contacts sub-tabs (union of all languages)
         self._rebuild_lang_tabs()
 
-    def _on_language_changed(self, lang: str) -> None:
-        """Load the selected language template into the editor fields."""
-        if not lang:
+    def _on_topic_changed(self, topic: str) -> None:
+        """Update the language combo when the topic changes."""
+        if not topic:
+            return
+        langs = template_manager.list_languages(topic, _TEMPLATES_DIR)
+        prev_lang = self._lang_combo.currentText()
+        self._lang_combo.blockSignals(True)
+        self._lang_combo.clear()
+        self._lang_combo.addItems(langs)
+        self._lang_combo.blockSignals(False)
+        if prev_lang and prev_lang in langs:
+            self._lang_combo.setCurrentText(prev_lang)
+        elif langs:
+            self._lang_combo.setCurrentIndex(0)
+        self._on_template_selection_changed(self._lang_combo.currentText())
+
+    def _on_template_selection_changed(self, lang: str) -> None:
+        """Load the selected topic/language template into the editor."""
+        topic = self._topic_combo.currentText()
+        if not topic or not lang:
             return
         try:
-            tpl = template_manager.load_template(lang, _TEMPLATES_DIR)
+            tpl = template_manager.load_template(topic, lang, _TEMPLATES_DIR)
         except FileNotFoundError:
+            self._subject_edit.clear()
+            self._body_edit.clear()
             return
         self._subject_edit.setText(tpl["subject"])
         self._body_edit.setPlainText(tpl["body"])
 
     def _on_save_template(self) -> None:
-        """Save the current subject/body to the selected language file."""
+        """Save the current subject/body to the selected topic/language file."""
+        topic = self._topic_combo.currentText()
         lang = self._lang_combo.currentText()
-        if not lang:
+        if not topic or not lang:
             return
         template_manager.save_template(
+            topic,
             lang,
             self._subject_edit.text(),
             self._body_edit.toPlainText(),
             _TEMPLATES_DIR,
         )
-        self._refresh_languages()
+        self._refresh_templates()
+        self._topic_combo.setCurrentText(topic)
         self._lang_combo.setCurrentText(lang)
 
+    def _on_new_topic(self) -> None:
+        """Prompt for a new topic name."""
+        name, ok = QInputDialog.getText(
+            self, "New Topic", "Topic name (e.g. partnership, follow-up):"
+        )
+        if ok and name.strip():
+            name = name.strip().lower().replace(" ", "-")
+            # Create topic dir with an empty first-language template
+            langs = template_manager.list_languages(templates_dir=_TEMPLATES_DIR)
+            first_lang = langs[0] if langs else "en"
+            template_manager.save_template(name, first_lang, "", "", _TEMPLATES_DIR)
+            self._refresh_templates()
+            self._topic_combo.setCurrentText(name)
+
     def _on_new_language(self) -> None:
-        """Prompt for a new language code and clear the editor."""
+        """Prompt for a new language code within the current topic."""
+        topic = self._topic_combo.currentText()
+        if not topic:
+            return
         code, ok = QInputDialog.getText(
             self, "New Language", "Language code (e.g. fr, es):"
         )
         if ok and code.strip():
             code = code.strip().lower()
-            template_manager.save_template(code, "", "", _TEMPLATES_DIR)
-            self._refresh_languages()
+            template_manager.save_template(topic, code, "", "", _TEMPLATES_DIR)
+            self._refresh_templates()
+            self._topic_combo.setCurrentText(topic)
             self._lang_combo.setCurrentText(code)
 
     def _update_placeholder_label(self) -> None:
@@ -462,7 +541,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_send_tab(self) -> QWidget:
-        """Build the Send tab with dry-run toggle, send buttons, and log."""
+        """Build the Send tab with topic selector, dry-run toggle, and log."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
@@ -477,6 +556,14 @@ class MainWindow(QMainWindow):
             )
             notice.setWordWrap(True)
             layout.addWidget(notice)
+
+        # Topic selector row
+        topic_layout = QHBoxLayout()
+        topic_layout.addWidget(QLabel("Topic:"))
+        self._send_topic_combo = QComboBox()
+        topic_layout.addWidget(self._send_topic_combo)
+        topic_layout.addStretch()
+        layout.addLayout(topic_layout)
 
         # Controls row
         ctrl_layout = QHBoxLayout()
@@ -523,6 +610,10 @@ class MainWindow(QMainWindow):
 
         return widget
 
+    def _send_topic(self) -> str:
+        """Return the topic selected in the Send tab."""
+        return self._send_topic_combo.currentText()
+
     def _on_dry_run_toggled(self, checked: bool) -> None:
         """Enable or disable send buttons based on dry-run state and Outlook availability."""
         enabled = checked or mailer.OUTLOOK_AVAILABLE
@@ -540,6 +631,11 @@ class MainWindow(QMainWindow):
 
     def _on_preview(self) -> None:
         """Show a preview of the resolved email for the selected contact."""
+        topic = self._send_topic()
+        if not topic:
+            QMessageBox.information(self, "Preview", "Select a topic first.")
+            return
+
         table = self._current_table()
         if table is None or table.currentRow() < 0:
             QMessageBox.information(self, "Preview", "Select a contact row first.")
@@ -551,9 +647,13 @@ class MainWindow(QMainWindow):
         row["language"] = lang
 
         try:
-            tpl = template_manager.load_template(lang, _TEMPLATES_DIR)
+            tpl = template_manager.load_template(topic, lang, _TEMPLATES_DIR)
         except FileNotFoundError:
-            QMessageBox.warning(self, "Preview", f"No template for language '{lang}'.")
+            QMessageBox.warning(
+                self,
+                "Preview",
+                f"No template for topic '{topic}', language '{lang}'.",
+            )
             return
 
         try:
@@ -585,24 +685,19 @@ class MainWindow(QMainWindow):
 
     def _on_send_selected(self) -> None:
         """Send emails to checked contacts across all language tabs."""
-        rows: list[dict[str, str]] = []
-        for i in range(self._lang_tabs.count()):
-            lang = self._lang_tabs.tabText(i)
-            table = self._lang_tables[lang]
-            for r in range(table.rowCount()):
-                container = table.cellWidget(r, 0)
-                cb = container.findChild(QCheckBox) if container else None
-                if cb and cb.isChecked():
-                    row = self._table_row_to_dict(table, r)
-                    row["language"] = lang
-                    rows.append(row)
+        rows = self._checked_contacts()
         if not rows:
             QMessageBox.information(self, "Send", "Check one or more contacts first.")
             return
         self._send_emails(rows)
 
     def _send_emails(self, rows: list[dict[str, str]]) -> None:
-        """Execute the send loop for *rows* (dry-run or real)."""
+        """Execute the send loop for *rows* using the topic selected in the Send tab."""
+        topic = self._send_topic()
+        if not topic:
+            QMessageBox.warning(self, "Send", "Select a topic first.")
+            return
+
         dry_run = self._dry_run_cb.isChecked()
 
         # Validate first
@@ -652,11 +747,11 @@ class MainWindow(QMainWindow):
             email = row.get("email", "")
             lang = row.get("language", "")
 
-            # Load template
+            # Load template for this topic + language
             try:
-                tpl = template_manager.load_template(lang, _TEMPLATES_DIR)
+                tpl = template_manager.load_template(topic, lang, _TEMPLATES_DIR)
             except FileNotFoundError:
-                self._log_msg(f"SKIPPED {email} — no template for '{lang}'")
+                self._log_msg(f"SKIPPED {email} — no '{topic}' template for '{lang}'")
                 skipped += 1
                 self._progress.setValue(i + 1)
                 QApplication.processEvents()
