@@ -208,12 +208,19 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_contacts_tab(self) -> QWidget:
-        """Build the Contacts tab with language sub-tabs and action buttons."""
+        """Build the Contacts tab with search, language sub-tabs, and action buttons."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Buttons
-        btn_layout = QHBoxLayout()
+        # Top row: search + buttons
+        top_layout = QHBoxLayout()
+
+        self._contacts_search = QLineEdit()
+        self._contacts_search.setPlaceholderText("Filter contacts...")
+        self._contacts_search.setClearButtonEnabled(True)
+        self._contacts_search.textChanged.connect(self._on_contacts_filter_changed)
+        top_layout.addWidget(self._contacts_search)
+
         btn_import = QPushButton("Import CSV")
         btn_export = QPushButton("Export CSV")
         btn_add_col = QPushButton("Add Column")
@@ -221,17 +228,18 @@ class MainWindow(QMainWindow):
         btn_export.clicked.connect(self._on_export_csv)
         btn_add_col.clicked.connect(self._on_add_column)
         for btn in (btn_import, btn_export, btn_add_col):
-            btn_layout.addWidget(btn)
+            top_layout.addWidget(btn)
 
         self._contacts_save_status = QLabel()
-        btn_layout.addWidget(self._contacts_save_status)
+        top_layout.addWidget(self._contacts_save_status)
 
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
+        layout.addLayout(top_layout)
 
         # Language sub-tabs — one table per language
         self._lang_tabs = QTabWidget()
         self._lang_tables: dict[str, _ExcelTable] = {}
+        # Track sort state per language tab: {lang: (col, ascending)}
+        self._sort_state: dict[str, tuple[int, bool]] = {}
         layout.addWidget(self._lang_tabs)
 
         return widget
@@ -254,6 +262,9 @@ class MainWindow(QMainWindow):
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(
             lambda pos, t=table: self._on_table_context_menu(t, pos)
+        )
+        table.horizontalHeader().sectionClicked.connect(
+            lambda col, la=lang: self._on_sort_column(la, col)
         )
         self._lang_tables[lang] = table
         return table
@@ -514,6 +525,65 @@ class MainWindow(QMainWindow):
                     item.setData(Qt.ItemDataRole.BackgroundRole, None)
                 item.setToolTip(tooltip)
         self._schedule_contacts_save()
+
+    def _on_sort_column(self, lang: str, col: int) -> None:
+        """Sort a language table by column, keeping the sentinel row pinned at the bottom."""
+        table = self._lang_tables.get(lang)
+        if table is None:
+            return
+
+        # Toggle sort direction
+        prev_col, prev_asc = self._sort_state.get(lang, (None, True))
+        ascending = not prev_asc if prev_col == col else True
+        self._sort_state[lang] = (col, ascending)
+
+        # Collect data rows (exclude sentinel)
+        data_count = self._data_row_count(table)
+        rows: list[list[str]] = []
+        for r in range(data_count):
+            row_data = [
+                (table.item(r, c).text() if table.item(r, c) else "")
+                for c in range(table.columnCount())
+            ]
+            rows.append(row_data)
+
+        rows.sort(key=lambda row: row[col].lower(), reverse=not ascending)
+
+        # Repopulate data rows
+        table.blockSignals(True)
+        for r, row_data in enumerate(rows):
+            for c, text in enumerate(row_data):
+                item = table.item(r, c)
+                if item:
+                    item.setText(text)
+                else:
+                    table.setItem(r, c, QTableWidgetItem(text))
+        table.blockSignals(False)
+
+        # Update header sort indicator
+        table.horizontalHeader().setSortIndicator(
+            col,
+            Qt.SortOrder.AscendingOrder if ascending else Qt.SortOrder.DescendingOrder,
+        )
+        table.horizontalHeader().setSortIndicatorShown(True)
+
+        self._validate_table(table)
+        self._schedule_contacts_save()
+
+    def _on_contacts_filter_changed(self, text: str) -> None:
+        """Show/hide rows across all language tables based on search text."""
+        text = text.lower()
+        for lang, table in self._lang_tables.items():
+            data_count = self._data_row_count(table)
+            for r in range(data_count):
+                row_text = " ".join(
+                    (table.item(r, c).text() if table.item(r, c) else "")
+                    for c in range(table.columnCount())
+                ).lower()
+                table.setRowHidden(r, text not in row_text)
+            # Always show the sentinel row
+            sentinel = table.rowCount() - 1
+            table.setRowHidden(sentinel, False)
 
     # ------------------------------------------------------------------
     # Templates tab
