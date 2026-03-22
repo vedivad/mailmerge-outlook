@@ -120,8 +120,6 @@ class MainWindow(QMainWindow):
     def _make_table(self, lang: str) -> _ExcelTable:
         """Create a new table widget for a language tab."""
         table = _ExcelTable()
-        table.horizontalHeader().setStretchLastSection(True)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         table.cellChanged.connect(
             lambda row, col: self._on_cell_changed(lang, row, col)
         )
@@ -182,13 +180,31 @@ class MainWindow(QMainWindow):
         """Fill a table from a list of row dicts (without the language column)."""
         table.blockSignals(True)
         table.setRowCount(len(rows))
-        table.setColumnCount(len(self._headers))
-        table.setHorizontalHeaderLabels(self._headers)
+        # Column 0 is the checkbox, data columns start at 1
+        table.setColumnCount(len(self._headers) + 1)
+        table.setHorizontalHeaderLabels([""] + self._headers)
 
         for r, row in enumerate(rows):
+            # Checkbox column
+            cb_item = QTableWidgetItem()
+            cb_item.setFlags(
+                Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled
+            )
+            cb_item.setCheckState(Qt.CheckState.Unchecked)
+            table.setItem(r, 0, cb_item)
+            # Data columns
             for c, header in enumerate(self._headers):
                 item = QTableWidgetItem(row.get(header, ""))
-                table.setItem(r, c, item)
+                table.setItem(r, c + 1, item)
+
+        # Make checkbox column narrow, stretch the rest
+        table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        for c in range(1, table.columnCount()):
+            table.horizontalHeader().setSectionResizeMode(
+                c, QHeaderView.ResizeMode.Stretch
+            )
 
         table.blockSignals(False)
         self._validate_table(table)
@@ -201,7 +217,7 @@ class MainWindow(QMainWindow):
             row_dict = self._table_row_to_dict(table, r)
             errors = self._validate_contact(row_dict)
             tooltip = "; ".join(errors) if errors else ""
-            for c in range(table.columnCount()):
+            for c in range(1, table.columnCount()):  # skip checkbox column
                 item = table.item(r, c)
                 if item:
                     if errors:
@@ -224,10 +240,10 @@ class MainWindow(QMainWindow):
         return errors
 
     def _table_row_to_dict(self, table: _ExcelTable, row_index: int) -> dict[str, str]:
-        """Convert a table row to a dict keyed by column headers."""
+        """Convert a table row to a dict keyed by column headers (skipping checkbox col)."""
         result: dict[str, str] = {}
         for c, header in enumerate(self._headers):
-            item = table.item(row_index, c)
+            item = table.item(row_index, c + 1)  # +1 to skip checkbox column
             result[header] = item.text() if item else ""
         return result
 
@@ -266,8 +282,14 @@ class MainWindow(QMainWindow):
         table.blockSignals(True)
         r = table.rowCount()
         table.insertRow(r)
+        # Checkbox column
+        cb_item = QTableWidgetItem()
+        cb_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+        cb_item.setCheckState(Qt.CheckState.Unchecked)
+        table.setItem(r, 0, cb_item)
+        # Data columns
         for c in range(len(self._headers)):
-            table.setItem(r, c, QTableWidgetItem(""))
+            table.setItem(r, c + 1, QTableWidgetItem(""))
         table.blockSignals(False)
         self._validate_table(table)
 
@@ -300,7 +322,7 @@ class MainWindow(QMainWindow):
             table.blockSignals(True)
             col = table.columnCount()
             table.setColumnCount(col + 1)
-            table.setHorizontalHeaderLabels(self._headers)
+            table.setHorizontalHeaderLabels([""] + self._headers)
             for r in range(table.rowCount()):
                 table.setItem(r, col, QTableWidgetItem(""))
             table.blockSignals(False)
@@ -314,7 +336,7 @@ class MainWindow(QMainWindow):
         errors = self._validate_contact(row_dict)
         err_bg = QColor(255, 80, 80, 60)
         tooltip = "; ".join(errors) if errors else ""
-        for c in range(table.columnCount()):
+        for c in range(1, table.columnCount()):  # skip checkbox column
             item = table.item(row, c)
             if item:
                 if errors:
@@ -558,22 +580,20 @@ class MainWindow(QMainWindow):
         self._send_emails(rows)
 
     def _on_send_selected(self) -> None:
-        """Send emails to selected contacts in the current language tab."""
-        table = self._current_table()
-        if table is None:
+        """Send emails to checked contacts across all language tabs."""
+        rows: list[dict[str, str]] = []
+        for i in range(self._lang_tabs.count()):
+            lang = self._lang_tabs.tabText(i)
+            table = self._lang_tables[lang]
+            for r in range(table.rowCount()):
+                cb = table.item(r, 0)
+                if cb and cb.checkState() == Qt.CheckState.Checked:
+                    row = self._table_row_to_dict(table, r)
+                    row["language"] = lang
+                    rows.append(row)
+        if not rows:
+            QMessageBox.information(self, "Send", "Check one or more contacts first.")
             return
-        lang = self._current_lang()
-        selected_rows = sorted({idx.row() for idx in table.selectedIndexes()})
-        if not selected_rows:
-            QMessageBox.information(
-                self, "Send", "Select one or more contact rows first."
-            )
-            return
-        rows = []
-        for r in selected_rows:
-            row = self._table_row_to_dict(table, r)
-            row["language"] = lang
-            rows.append(row)
         self._send_emails(rows)
 
     def _send_emails(self, rows: list[dict[str, str]]) -> None:
