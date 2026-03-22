@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -42,11 +42,12 @@ class _ExcelTable(QTableWidget):
     def keyPressEvent(self, event) -> None:  # noqa: N802
         """Commit the current edit and move down on Enter/Return."""
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            current = self.currentIndex()
-            super().keyPressEvent(event)  # let the table commit the edit
-            next_row = current.row() + 1
+            row = self.currentRow()
+            col = self.currentColumn()
+            super().keyPressEvent(event)
+            next_row = row + 1
             if next_row < self.rowCount():
-                self.setCurrentCell(next_row, current.column())
+                QTimer.singleShot(0, lambda: self.setCurrentCell(next_row, col))
         else:
             super().keyPressEvent(event)
 
