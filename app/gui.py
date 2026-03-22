@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -50,6 +51,125 @@ class _ExcelTable(QTableWidget):
                 QTimer.singleShot(0, lambda: self.setCurrentCell(next_row, col))
         else:
             super().keyPressEvent(event)
+
+
+class _ContactPickerDialog(QDialog):
+    """Dialog for picking one or more contacts with search filtering."""
+
+    def __init__(
+        self,
+        contacts: list[dict[str, str]],
+        multi_select: bool = True,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Select Contacts" if multi_select else "Select Contact")
+        self.resize(600, 450)
+        self._contacts = contacts
+        self._multi_select = multi_select
+        self._checkboxes: list[QCheckBox] = []
+        self._selected: list[dict[str, str]] = []
+
+        layout = QVBoxLayout(self)
+
+        # Search bar
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Filter contacts...")
+        self._search.textChanged.connect(self._apply_filter)
+        layout.addWidget(self._search)
+
+        # Select all (multi-select only)
+        if multi_select:
+            self._select_all_cb = QCheckBox("Select all")
+            self._select_all_cb.stateChanged.connect(self._on_select_all)
+            layout.addWidget(self._select_all_cb)
+
+        # Contact list as table with checkboxes / radio-style selection
+        headers = list(contacts[0].keys()) if contacts else []
+        self._table = QTableWidget(
+            len(contacts), len(headers) + (1 if multi_select else 0)
+        )
+
+        if multi_select:
+            self._table.setHorizontalHeaderLabels([""] + headers)
+        else:
+            self._table.setHorizontalHeaderLabels(headers)
+            self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+
+        for r, contact in enumerate(contacts):
+            col_offset = 0
+            if multi_select:
+                cb = QCheckBox()
+                container = QWidget()
+                lay = QHBoxLayout(container)
+                lay.addWidget(cb)
+                lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                lay.setContentsMargins(0, 0, 0, 0)
+                self._table.setCellWidget(r, 0, container)
+                self._checkboxes.append(cb)
+                col_offset = 1
+
+            for c, header in enumerate(headers):
+                item = QTableWidgetItem(contact.get(header, ""))
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self._table.setItem(r, c + col_offset, item)
+
+        if multi_select:
+            self._table.horizontalHeader().setSectionResizeMode(
+                0, QHeaderView.ResizeMode.ResizeToContents
+            )
+            for c in range(1, self._table.columnCount()):
+                self._table.horizontalHeader().setSectionResizeMode(
+                    c, QHeaderView.ResizeMode.Stretch
+                )
+        else:
+            self._table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Stretch
+            )
+
+        layout.addWidget(self._table)
+
+        # Buttons
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _apply_filter(self, text: str) -> None:
+        """Show/hide rows based on the search text."""
+        text = text.lower()
+        for r, contact in enumerate(self._contacts):
+            values = " ".join(contact.values()).lower()
+            visible = text in values
+            self._table.setRowHidden(r, not visible)
+
+    def _on_select_all(self, state: int) -> None:
+        """Toggle all visible checkboxes."""
+        checked = state == Qt.CheckState.Checked.value
+        for r, cb in enumerate(self._checkboxes):
+            if not self._table.isRowHidden(r):
+                cb.setChecked(checked)
+
+    def _on_accept(self) -> None:
+        """Collect selected contacts and accept the dialog."""
+        if self._multi_select:
+            self._selected = [
+                self._contacts[r]
+                for r, cb in enumerate(self._checkboxes)
+                if cb.isChecked()
+            ]
+        else:
+            rows = self._table.selectionModel().selectedRows()
+            if rows:
+                self._selected = [self._contacts[rows[0].row()]]
+        self.accept()
+
+    def selected_contacts(self) -> list[dict[str, str]]:
+        """Return the contacts chosen by the user."""
+        return self._selected
 
 
 class MainWindow(QMainWindow):
@@ -181,38 +301,17 @@ class MainWindow(QMainWindow):
         """Fill a table from a list of row dicts (without the language column)."""
         table.blockSignals(True)
         table.setRowCount(len(rows))
-        # Column 0 is the checkbox, data columns start at 1
-        table.setColumnCount(len(self._headers) + 1)
-        table.setHorizontalHeaderLabels([""] + self._headers)
+        table.setColumnCount(len(self._headers))
+        table.setHorizontalHeaderLabels(self._headers)
 
         for r, row in enumerate(rows):
-            self._set_checkbox(table, r)
             for c, header in enumerate(self._headers):
                 item = QTableWidgetItem(row.get(header, ""))
-                table.setItem(r, c + 1, item)
+                table.setItem(r, c, item)
 
-        # Make checkbox column narrow, stretch the rest
-        table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents
-        )
-        for c in range(1, table.columnCount()):
-            table.horizontalHeader().setSectionResizeMode(
-                c, QHeaderView.ResizeMode.Stretch
-            )
-
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         table.blockSignals(False)
         self._validate_table(table)
-
-    @staticmethod
-    def _set_checkbox(table: _ExcelTable, row: int) -> None:
-        """Place a centered checkbox widget in column 0 of *row*."""
-        cb = QCheckBox()
-        container = QWidget()
-        lay = QHBoxLayout(container)
-        lay.addWidget(cb)
-        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.setContentsMargins(0, 0, 0, 0)
-        table.setCellWidget(row, 0, container)
 
     def _validate_table(self, table: _ExcelTable) -> None:
         """Highlight invalid rows in a contacts table."""
@@ -222,7 +321,7 @@ class MainWindow(QMainWindow):
             row_dict = self._table_row_to_dict(table, r)
             errors = self._validate_contact(row_dict)
             tooltip = "; ".join(errors) if errors else ""
-            for c in range(1, table.columnCount()):
+            for c in range(table.columnCount()):
                 item = table.item(r, c)
                 if item:
                     if errors:
@@ -245,10 +344,10 @@ class MainWindow(QMainWindow):
         return errors
 
     def _table_row_to_dict(self, table: _ExcelTable, row_index: int) -> dict[str, str]:
-        """Convert a table row to a dict keyed by column headers (skipping checkbox col)."""
+        """Convert a table row to a dict keyed by column headers."""
         result: dict[str, str] = {}
         for c, header in enumerate(self._headers):
-            item = table.item(row_index, c + 1)
+            item = table.item(row_index, c)
             result[header] = item.text() if item else ""
         return result
 
@@ -262,21 +361,6 @@ class MainWindow(QMainWindow):
                 row = self._table_row_to_dict(table, r)
                 row["language"] = lang
                 rows.append(row)
-        return rows
-
-    def _checked_contacts(self) -> list[dict[str, str]]:
-        """Gather checked contacts from all language tabs."""
-        rows: list[dict[str, str]] = []
-        for i in range(self._lang_tabs.count()):
-            lang = self._lang_tabs.tabText(i)
-            table = self._lang_tables[lang]
-            for r in range(table.rowCount()):
-                container = table.cellWidget(r, 0)
-                cb = container.findChild(QCheckBox) if container else None
-                if cb and cb.isChecked():
-                    row = self._table_row_to_dict(table, r)
-                    row["language"] = lang
-                    rows.append(row)
         return rows
 
     # -- Contacts slots --
@@ -302,9 +386,8 @@ class MainWindow(QMainWindow):
         table.blockSignals(True)
         r = table.rowCount()
         table.insertRow(r)
-        self._set_checkbox(table, r)
         for c in range(len(self._headers)):
-            table.setItem(r, c + 1, QTableWidgetItem(""))
+            table.setItem(r, c, QTableWidgetItem(""))
         table.blockSignals(False)
         self._validate_table(table)
 
@@ -336,7 +419,7 @@ class MainWindow(QMainWindow):
             table.blockSignals(True)
             col = table.columnCount()
             table.setColumnCount(col + 1)
-            table.setHorizontalHeaderLabels([""] + self._headers)
+            table.setHorizontalHeaderLabels(self._headers)
             for r in range(table.rowCount()):
                 table.setItem(r, col, QTableWidgetItem(""))
             table.blockSignals(False)
@@ -350,7 +433,7 @@ class MainWindow(QMainWindow):
         errors = self._validate_contact(row_dict)
         err_bg = QColor(255, 80, 80, 60)
         tooltip = "; ".join(errors) if errors else ""
-        for c in range(1, table.columnCount()):
+        for c in range(table.columnCount()):
             item = table.item(row, c)
             if item:
                 if errors:
@@ -503,7 +586,6 @@ class MainWindow(QMainWindow):
         )
         if ok and name.strip():
             name = name.strip().lower().replace(" ", "-")
-            # Create topic dir with an empty first-language template
             langs = template_manager.list_languages(templates_dir=_TEMPLATES_DIR)
             first_lang = langs[0] if langs else "en"
             template_manager.save_template(name, first_lang, "", "", _TEMPLATES_DIR)
@@ -630,21 +712,26 @@ class MainWindow(QMainWindow):
         self._log.append(f"[{ts}] {message}")
 
     def _on_preview(self) -> None:
-        """Show a preview of the resolved email for the selected contact."""
+        """Open a contact picker, then show a preview for the chosen contact."""
         topic = self._send_topic()
         if not topic:
             QMessageBox.information(self, "Preview", "Select a topic first.")
             return
 
-        table = self._current_table()
-        if table is None or table.currentRow() < 0:
-            QMessageBox.information(self, "Preview", "Select a contact row first.")
+        contacts = self._all_contacts()
+        if not contacts:
+            QMessageBox.information(self, "Preview", "No contacts loaded.")
             return
 
-        row_idx = table.currentRow()
-        lang = self._current_lang()
-        row = self._table_row_to_dict(table, row_idx)
-        row["language"] = lang
+        dlg = _ContactPickerDialog(contacts, multi_select=False, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        selected = dlg.selected_contacts()
+        if not selected:
+            return
+
+        row = selected[0]
+        lang = row.get("language", "")
 
         try:
             tpl = template_manager.load_template(topic, lang, _TEMPLATES_DIR)
@@ -665,20 +752,20 @@ class MainWindow(QMainWindow):
 
         html_body = template_manager.render_html(body)
 
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Email Preview")
-        dlg.resize(500, 400)
-        dlg_layout = QVBoxLayout(dlg)
-        dlg_layout.addWidget(QLabel(f"<b>To:</b> {row.get('email', '')}"))
-        dlg_layout.addWidget(QLabel(f"<b>Subject:</b> {subject}"))
+        preview = QDialog(self)
+        preview.setWindowTitle("Email Preview")
+        preview.resize(500, 400)
+        preview_layout = QVBoxLayout(preview)
+        preview_layout.addWidget(QLabel(f"<b>To:</b> {row.get('email', '')}"))
+        preview_layout.addWidget(QLabel(f"<b>Subject:</b> {subject}"))
         body_view = QTextEdit()
         body_view.setReadOnly(True)
         body_view.setHtml(html_body)
-        dlg_layout.addWidget(body_view)
+        preview_layout.addWidget(body_view)
         btn_close = QPushButton("Close")
-        btn_close.clicked.connect(dlg.accept)
-        dlg_layout.addWidget(btn_close)
-        dlg.exec()
+        btn_close.clicked.connect(preview.accept)
+        preview_layout.addWidget(btn_close)
+        preview.exec()
 
     def _on_send_all(self) -> None:
         """Send emails to all contacts across all language tabs."""
@@ -686,12 +773,20 @@ class MainWindow(QMainWindow):
         self._send_emails(rows)
 
     def _on_send_selected(self) -> None:
-        """Send emails to checked contacts across all language tabs."""
-        rows = self._checked_contacts()
-        if not rows:
-            QMessageBox.information(self, "Send", "Check one or more contacts first.")
+        """Open a contact picker and send to the chosen contacts."""
+        contacts = self._all_contacts()
+        if not contacts:
+            QMessageBox.information(self, "Send", "No contacts loaded.")
             return
-        self._send_emails(rows)
+
+        dlg = _ContactPickerDialog(contacts, multi_select=True, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        selected = dlg.selected_contacts()
+        if not selected:
+            QMessageBox.information(self, "Send", "No contacts selected.")
+            return
+        self._send_emails(selected)
 
     def _send_emails(self, rows: list[dict[str, str]]) -> None:
         """Execute the send loop for *rows* using the topic selected in the Send tab."""
