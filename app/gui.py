@@ -185,13 +185,14 @@ class MainWindow(QMainWindow):
         table.setHorizontalHeaderLabels([""] + self._headers)
 
         for r, row in enumerate(rows):
-            # Checkbox column
-            cb_item = QTableWidgetItem()
-            cb_item.setFlags(
-                Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled
-            )
-            cb_item.setCheckState(Qt.CheckState.Unchecked)
-            table.setItem(r, 0, cb_item)
+            # Checkbox widget centered in cell
+            cb = QCheckBox()
+            container = QWidget()
+            layout = QHBoxLayout(container)
+            layout.addWidget(cb)
+            layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.setContentsMargins(0, 0, 0, 0)
+            table.setCellWidget(r, 0, container)
             # Data columns
             for c, header in enumerate(self._headers):
                 item = QTableWidgetItem(row.get(header, ""))
@@ -282,11 +283,14 @@ class MainWindow(QMainWindow):
         table.blockSignals(True)
         r = table.rowCount()
         table.insertRow(r)
-        # Checkbox column
-        cb_item = QTableWidgetItem()
-        cb_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-        cb_item.setCheckState(Qt.CheckState.Unchecked)
-        table.setItem(r, 0, cb_item)
+        # Checkbox widget
+        cb = QCheckBox()
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.addWidget(cb)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(0, 0, 0, 0)
+        table.setCellWidget(r, 0, container)
         # Data columns
         for c in range(len(self._headers)):
             table.setItem(r, c + 1, QTableWidgetItem(""))
@@ -586,8 +590,9 @@ class MainWindow(QMainWindow):
             lang = self._lang_tabs.tabText(i)
             table = self._lang_tables[lang]
             for r in range(table.rowCount()):
-                cb = table.item(r, 0)
-                if cb and cb.checkState() == Qt.CheckState.Checked:
+                container = table.cellWidget(r, 0)
+                cb = container.findChild(QCheckBox) if container else None
+                if cb and cb.isChecked():
                     row = self._table_row_to_dict(table, r)
                     row["language"] = lang
                     rows.append(row)
