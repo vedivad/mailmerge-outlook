@@ -53,9 +53,9 @@ class MainWindow(QMainWindow):
         self._loading_contacts: bool = False
 
         tabs = QTabWidget()
-        tabs.addTab(self._build_contacts_tab(), "Contacts")
-        tabs.addTab(self._build_templates_tab(), "Templates")
-        tabs.addTab(self._build_send_tab(), "Send")
+        tabs.addTab(self._build_contacts_tab(), "Kontakte")
+        tabs.addTab(self._build_templates_tab(), "Vorlagen")
+        tabs.addTab(self._build_send_tab(), "Senden")
         self.setCentralWidget(tabs)
 
         # Contacts auto-save timer (debounce 500ms)
@@ -81,14 +81,14 @@ class MainWindow(QMainWindow):
         top_layout = QHBoxLayout()
 
         self._contacts_search = QLineEdit()
-        self._contacts_search.setPlaceholderText("Filter contacts...")
+        self._contacts_search.setPlaceholderText("Kontakte filtern...")
         self._contacts_search.setClearButtonEnabled(True)
         self._contacts_search.textChanged.connect(self._on_contacts_filter_changed)
         top_layout.addWidget(self._contacts_search)
 
-        btn_import = QPushButton("Import CSV")
-        btn_export = QPushButton("Export CSV")
-        btn_add_col = QPushButton("Add Column")
+        btn_import = QPushButton("CSV importieren")
+        btn_export = QPushButton("CSV exportieren")
+        btn_add_col = QPushButton("Spalte hinzufuegen")
         btn_import.clicked.connect(self._on_import_csv)
         btn_export.clicked.connect(self._on_export_csv)
         btn_add_col.clicked.connect(self._on_add_column)
@@ -139,7 +139,9 @@ class MainWindow(QMainWindow):
         try:
             self._rows = contact_manager.load_csv(path)
         except FileNotFoundError:
-            QMessageBox.warning(self, "File not found", f"Could not find {path}")
+            QMessageBox.warning(
+                self, "Datei nicht gefunden", f"Konnte {path} nicht finden"
+            )
             return
 
         self._contacts_path = path
@@ -273,7 +275,7 @@ class MainWindow(QMainWindow):
     def _on_import_csv(self) -> None:
         """Open a file dialog and import contacts from a CSV."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Import CSV", str(PROJECT_DIR), "CSV Files (*.csv)"
+            self, "CSV importieren", str(PROJECT_DIR), "CSV-Dateien (*.csv)"
         )
         if path:
             self._load_csv(Path(path))
@@ -282,7 +284,7 @@ class MainWindow(QMainWindow):
     def _on_export_csv(self) -> None:
         """Export all contacts to a user-chosen CSV file."""
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export CSV", str(PROJECT_DIR), "CSV Files (*.csv)"
+            self, "CSV exportieren", str(PROJECT_DIR), "CSV-Dateien (*.csv)"
         )
         if path:
             rows = self._all_contacts()
@@ -292,7 +294,7 @@ class MainWindow(QMainWindow):
         """Mark contacts as unsaved and restart the debounce timer."""
         if self._loading_contacts:
             return
-        self._contacts_save_status.setText("Unsaved...")
+        self._contacts_save_status.setText("Ungespeichert...")
         self._contacts_save_status.setStyleSheet("color: orange;")
         self._contacts_save_timer.start()
 
@@ -300,7 +302,7 @@ class MainWindow(QMainWindow):
         """Save all contacts to the default CSV (called by debounce timer)."""
         rows = self._all_contacts()
         contact_manager.save_csv(self._contacts_path, rows)
-        self._contacts_save_status.setText("Saved")
+        self._contacts_save_status.setText("Gespeichert")
         self._contacts_save_status.setStyleSheet("color: gray;")
 
     def _on_table_context_menu(self, table: ExcelTable, pos) -> None:
@@ -310,7 +312,7 @@ class MainWindow(QMainWindow):
             return
 
         menu = QMenu(table)
-        delete_action = QAction("Delete Row", table)
+        delete_action = QAction("Zeile loeschen", table)
         delete_action.triggered.connect(lambda: self._delete_row(table, row))
         menu.addAction(delete_action)
         menu.exec(table.viewport().mapToGlobal(pos))
@@ -325,14 +327,14 @@ class MainWindow(QMainWindow):
     def _on_add_column(self) -> None:
         """Add a new column (placeholder) to all language tables."""
         name, ok = QInputDialog.getText(
-            self, "Add Column", "Column name (e.g. title, department):"
+            self, "Spalte hinzufuegen", "Spaltenname (z.B. titel, abteilung):"
         )
         if not ok or not name.strip():
             return
         name = name.strip()
         if name in self._headers:
             QMessageBox.information(
-                self, "Add Column", f"Column '{name}' already exists."
+                self, "Spalte hinzufuegen", f"Spalte '{name}' existiert bereits."
             )
             return
         self._headers.append(name)
@@ -461,21 +463,21 @@ class MainWindow(QMainWindow):
         # Topic + Language selector row
         sel_layout = QHBoxLayout()
 
-        sel_layout.addWidget(QLabel("Topic:"))
+        sel_layout.addWidget(QLabel("Thema:"))
         self._topic_combo = QComboBox()
         self._topic_combo.currentTextChanged.connect(self._on_topic_changed)
         sel_layout.addWidget(self._topic_combo)
 
-        btn_new_topic = QPushButton("New Topic")
+        btn_new_topic = QPushButton("Neues Thema")
         btn_new_topic.clicked.connect(self._on_new_topic)
         sel_layout.addWidget(btn_new_topic)
 
-        sel_layout.addWidget(QLabel("Language:"))
+        sel_layout.addWidget(QLabel("Sprache:"))
         self._lang_combo = QComboBox()
         self._lang_combo.currentTextChanged.connect(self._on_template_selection_changed)
         sel_layout.addWidget(self._lang_combo)
 
-        btn_new_lang = QPushButton("New Language")
+        btn_new_lang = QPushButton("Neue Sprache")
         btn_new_lang.clicked.connect(self._on_new_language)
         sel_layout.addWidget(btn_new_lang)
 
@@ -483,33 +485,35 @@ class MainWindow(QMainWindow):
         layout.addLayout(sel_layout)
 
         # Subject
-        layout.addWidget(QLabel("Subject:"))
+        layout.addWidget(QLabel("Betreff:"))
         self._subject_edit = QLineEdit()
         layout.addWidget(self._subject_edit)
 
         # Body
-        layout.addWidget(QLabel("Body:"))
+        layout.addWidget(QLabel("Inhalt:"))
 
         # Formatting toolbar
         fmt_layout = QHBoxLayout()
         btn_bold = QPushButton("B")
         btn_bold.setFixedWidth(32)
         btn_bold.setStyleSheet("font-weight: bold;")
-        btn_bold.setToolTip("Bold")
-        btn_bold.clicked.connect(lambda: self._insert_format("**", "**", "bold text"))
+        btn_bold.setToolTip("Fett")
+        btn_bold.clicked.connect(lambda: self._insert_format("**", "**", "Fettschrift"))
 
         btn_italic = QPushButton("I")
         btn_italic.setFixedWidth(32)
         btn_italic.setStyleSheet("font-style: italic;")
-        btn_italic.setToolTip("Italic")
-        btn_italic.clicked.connect(lambda: self._insert_format("*", "*", "italic text"))
+        btn_italic.setToolTip("Kursiv")
+        btn_italic.clicked.connect(
+            lambda: self._insert_format("*", "*", "Kursivschrift")
+        )
 
         btn_link = QPushButton("Link")
-        btn_link.setToolTip("Insert link")
+        btn_link.setToolTip("Link einfuegen")
         btn_link.clicked.connect(self._insert_link)
 
-        btn_image = QPushButton("Image")
-        btn_image.setToolTip("Insert image")
+        btn_image = QPushButton("Bild")
+        btn_image.setToolTip("Bild einfuegen")
         btn_image.clicked.connect(self._insert_image)
 
         for btn in (btn_bold, btn_italic, btn_link, btn_image):
@@ -534,7 +538,7 @@ class MainWindow(QMainWindow):
 
         bottom_layout.addStretch()
 
-        btn_preview_tpl = QPushButton("Preview")
+        btn_preview_tpl = QPushButton("Vorschau")
         btn_preview_tpl.clicked.connect(self._on_preview_template)
         bottom_layout.addWidget(btn_preview_tpl)
 
@@ -616,7 +620,7 @@ class MainWindow(QMainWindow):
             return
         self._subject_edit.setText(tpl["subject"])
         self._body_edit.setPlainText(tpl["body"])
-        self._save_status_label.setText("Saved")
+        self._save_status_label.setText("Gespeichert")
         self._save_status_label.setStyleSheet("color: gray;")
         self._loading_template = False
 
@@ -625,7 +629,7 @@ class MainWindow(QMainWindow):
         self._update_placeholder_label()
         if self._loading_template:
             return
-        self._save_status_label.setText("Unsaved changes...")
+        self._save_status_label.setText("Ungespeicherte Aenderungen...")
         self._save_status_label.setStyleSheet("color: orange;")
         self._save_timer.start()
 
@@ -642,7 +646,7 @@ class MainWindow(QMainWindow):
             self._body_edit.toPlainText(),
             TEMPLATES_DIR,
         )
-        self._save_status_label.setText("Saved")
+        self._save_status_label.setText("Gespeichert")
         self._save_status_label.setStyleSheet("color: gray;")
 
     def _on_preview_template(self) -> None:
@@ -655,17 +659,17 @@ class MainWindow(QMainWindow):
             body, topic=topic, templates_dir=TEMPLATES_DIR
         )
         dlg = QDialog(self)
-        dlg.setWindowTitle("Template Preview")
+        dlg.setWindowTitle("Vorlagenvorschau")
         dlg.resize(500, 400)
         dlg_layout = QVBoxLayout(dlg)
         subject = self._subject_edit.text()
         if subject:
-            dlg_layout.addWidget(QLabel(f"<b>Subject:</b> {subject}"))
+            dlg_layout.addWidget(QLabel(f"<b>Betreff:</b> {subject}"))
         view = QTextEdit()
         view.setReadOnly(True)
         view.setHtml(html)
         dlg_layout.addWidget(view)
-        btn_close = QPushButton("Close")
+        btn_close = QPushButton("Schliessen")
         btn_close.clicked.connect(dlg.accept)
         dlg_layout.addWidget(btn_close)
         dlg.exec()
@@ -694,17 +698,17 @@ class MainWindow(QMainWindow):
         selected = cursor.selectedText()
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Insert Link")
+        dlg.setWindowTitle("Link einfuegen")
         dlg_layout = QVBoxLayout(dlg)
 
-        dlg_layout.addWidget(QLabel("Display text:"))
+        dlg_layout.addWidget(QLabel("Anzeigetext:"))
         text_edit = QLineEdit(selected if selected else "")
-        text_edit.setPlaceholderText("e.g. Click here")
+        text_edit.setPlaceholderText("z.B. Hier klicken")
         dlg_layout.addWidget(text_edit)
 
         dlg_layout.addWidget(QLabel("URL:"))
         url_edit = QLineEdit()
-        url_edit.setPlaceholderText("e.g. https://example.com")
+        url_edit.setPlaceholderText("z.B. https://example.com")
         dlg_layout.addWidget(url_edit)
 
         buttons = QDialogButtonBox(
@@ -717,7 +721,7 @@ class MainWindow(QMainWindow):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        link_text = text_edit.text().strip() or "link"
+        link_text = text_edit.text().strip() or "Link"
         url = url_edit.text().strip()
         if not url:
             return
@@ -729,14 +733,14 @@ class MainWindow(QMainWindow):
         """Pick an image file, copy it to the topic's images folder, and insert a reference."""
         topic = self._topic_combo.currentText()
         if not topic:
-            QMessageBox.information(self, "Image", "Select a topic first.")
+            QMessageBox.information(self, "Bild", "Bitte zuerst ein Thema auswaehlen.")
             return
 
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Select Image",
+            "Bild auswaehlen",
             "",
-            "Images (*.png *.jpg *.jpeg *.gif *.bmp)",
+            "Bilder (*.png *.jpg *.jpeg *.gif *.bmp)",
         )
         if not path:
             return
@@ -749,8 +753,8 @@ class MainWindow(QMainWindow):
         if dest.exists():
             reply = QMessageBox.question(
                 self,
-                "Image exists",
-                f"'{src.name}' already exists. Overwrite?",
+                "Bild vorhanden",
+                f"'{src.name}' existiert bereits. Ueberschreiben?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -758,7 +762,7 @@ class MainWindow(QMainWindow):
         shutil.copy2(src, dest)
 
         desc, ok = QInputDialog.getText(
-            self, "Image Description", "Description (for accessibility):"
+            self, "Bildbeschreibung", "Beschreibung (fuer Barrierefreiheit):"
         )
         desc = desc.strip() if ok and desc.strip() else src.stem
 
@@ -769,7 +773,7 @@ class MainWindow(QMainWindow):
     def _on_new_topic(self) -> None:
         """Prompt for a new topic name."""
         name, ok = QInputDialog.getText(
-            self, "New Topic", "Topic name (e.g. partnership, follow-up):"
+            self, "Neues Thema", "Themenname (z.B. partnerschaft, nachfassung):"
         )
         if ok and name.strip():
             name = name.strip().lower().replace(" ", "-")
@@ -785,7 +789,7 @@ class MainWindow(QMainWindow):
         if not topic:
             return
         code, ok = QInputDialog.getText(
-            self, "New Language", "Language code (e.g. fr, es):"
+            self, "Neue Sprache", "Sprachcode (z.B. fr, es):"
         )
         if ok and code.strip():
             code = code.strip().lower()
@@ -800,10 +804,10 @@ class MainWindow(QMainWindow):
         names = template_manager.extract_placeholders(text)
         if names:
             self._placeholder_label.setText(
-                "Placeholders: " + ", ".join(f"{{{n}}}" for n in names)
+                "Platzhalter: " + ", ".join(f"{{{n}}}" for n in names)
             )
         else:
-            self._placeholder_label.setText("No placeholders found.")
+            self._placeholder_label.setText("Keine Platzhalter gefunden.")
 
     # ------------------------------------------------------------------
     # Send tab
@@ -817,8 +821,8 @@ class MainWindow(QMainWindow):
         # Outlook availability notice
         if not mailer.OUTLOOK_AVAILABLE:
             notice = QLabel(
-                "⚠ Outlook is not available on this platform. "
-                "Only dry-run mode is functional."
+                "⚠ Outlook ist auf dieser Plattform nicht verfuegbar. "
+                "Nur der Testlauf-Modus ist funktionsfaehig."
             )
             notice.setStyleSheet(
                 "color: #b45309; background: #fef3c7; padding: 6px; border-radius: 4px;"
@@ -828,13 +832,13 @@ class MainWindow(QMainWindow):
 
         # Topic + Signature selector row
         topic_layout = QHBoxLayout()
-        topic_layout.addWidget(QLabel("Topic:"))
+        topic_layout.addWidget(QLabel("Thema:"))
         self._send_topic_combo = QComboBox()
         topic_layout.addWidget(self._send_topic_combo)
 
-        topic_layout.addWidget(QLabel("Signature:"))
+        topic_layout.addWidget(QLabel("Signatur:"))
         self._signature_combo = QComboBox()
-        self._signature_combo.addItem("Default", None)
+        self._signature_combo.addItem("Standard", None)
         for sig in mailer.list_signatures():
             self._signature_combo.addItem(sig, sig)
         topic_layout.addWidget(self._signature_combo)
@@ -845,16 +849,16 @@ class MainWindow(QMainWindow):
         # Controls row
         ctrl_layout = QHBoxLayout()
 
-        self._dry_run_cb = QCheckBox("Dry run")
+        self._dry_run_cb = QCheckBox("Testlauf")
         self._dry_run_cb.setChecked(True)
         self._dry_run_cb.toggled.connect(self._on_dry_run_toggled)
         ctrl_layout.addWidget(self._dry_run_cb)
 
-        btn_preview = QPushButton("Preview")
+        btn_preview = QPushButton("Vorschau")
         btn_preview.clicked.connect(self._on_preview)
         ctrl_layout.addWidget(btn_preview)
 
-        self._btn_send_sel = QPushButton("Send")
+        self._btn_send_sel = QPushButton("Senden")
         self._btn_send_sel.clicked.connect(self._on_send_selected)
         ctrl_layout.addWidget(self._btn_send_sel)
 
@@ -893,7 +897,7 @@ class MainWindow(QMainWindow):
         self._btn_send_sel.setEnabled(enabled)
         if not enabled:
             self._btn_send_sel.setToolTip(
-                "Outlook is not available — enable dry run to test"
+                "Outlook nicht verfuegbar — Testlauf aktivieren zum Testen"
             )
         else:
             self._btn_send_sel.setToolTip("")
@@ -907,12 +911,14 @@ class MainWindow(QMainWindow):
         """Open a contact picker, then show a preview for the chosen contact."""
         topic = self._send_topic()
         if not topic:
-            QMessageBox.information(self, "Preview", "Select a topic first.")
+            QMessageBox.information(
+                self, "Vorschau", "Bitte zuerst ein Thema auswaehlen."
+            )
             return
 
         contacts = self._all_contacts()
         if not contacts:
-            QMessageBox.information(self, "Preview", "No contacts loaded.")
+            QMessageBox.information(self, "Vorschau", "Keine Kontakte geladen.")
             return
 
         dlg = ContactPickerDialog(contacts, multi_select=False, parent=self)
@@ -930,8 +936,8 @@ class MainWindow(QMainWindow):
         except FileNotFoundError:
             QMessageBox.warning(
                 self,
-                "Preview",
-                f"No template for topic '{topic}', language '{lang}'.",
+                "Vorschau",
+                f"Keine Vorlage fuer Thema '{topic}', Sprache '{lang}'.",
             )
             return
 
@@ -939,7 +945,7 @@ class MainWindow(QMainWindow):
             subject = tpl["subject"].format(**row)
             body = tpl["body"].format(**row)
         except KeyError as exc:
-            QMessageBox.warning(self, "Preview", f"Missing placeholder value: {exc}")
+            QMessageBox.warning(self, "Vorschau", f"Fehlender Platzhalterwert: {exc}")
             return
 
         html_body = template_manager.render_html(
@@ -947,16 +953,16 @@ class MainWindow(QMainWindow):
         )
 
         preview = QDialog(self)
-        preview.setWindowTitle("Email Preview")
+        preview.setWindowTitle("E-Mail-Vorschau")
         preview.resize(500, 400)
         preview_layout = QVBoxLayout(preview)
-        preview_layout.addWidget(QLabel(f"<b>To:</b> {row.get('email', '')}"))
-        preview_layout.addWidget(QLabel(f"<b>Subject:</b> {subject}"))
+        preview_layout.addWidget(QLabel(f"<b>An:</b> {row.get('email', '')}"))
+        preview_layout.addWidget(QLabel(f"<b>Betreff:</b> {subject}"))
         body_view = QTextEdit()
         body_view.setReadOnly(True)
         body_view.setHtml(html_body)
         preview_layout.addWidget(body_view)
-        btn_close = QPushButton("Close")
+        btn_close = QPushButton("Schliessen")
         btn_close.clicked.connect(preview.accept)
         preview_layout.addWidget(btn_close)
         preview.exec()
@@ -965,7 +971,7 @@ class MainWindow(QMainWindow):
         """Open a contact picker and send to the chosen contacts."""
         contacts = self._all_contacts()
         if not contacts:
-            QMessageBox.information(self, "Send", "No contacts loaded.")
+            QMessageBox.information(self, "Senden", "Keine Kontakte geladen.")
             return
 
         dlg = ContactPickerDialog(contacts, multi_select=True, parent=self)
@@ -973,7 +979,7 @@ class MainWindow(QMainWindow):
             return
         selected = dlg.selected_contacts()
         if not selected:
-            QMessageBox.information(self, "Send", "No contacts selected.")
+            QMessageBox.information(self, "Senden", "Keine Kontakte ausgewaehlt.")
             return
         self._send_emails(selected)
 
@@ -981,7 +987,7 @@ class MainWindow(QMainWindow):
         """Execute the send loop for *rows* using the topic selected in the Send tab."""
         topic = self._send_topic()
         if not topic:
-            QMessageBox.warning(self, "Send", "Select a topic first.")
+            QMessageBox.warning(self, "Senden", "Bitte zuerst ein Thema auswaehlen.")
             return
 
         dry_run = self._dry_run_cb.isChecked()
@@ -998,8 +1004,8 @@ class MainWindow(QMainWindow):
             msg_lines = [f"Row {idx}: {'; '.join(errs)}" for idx, errs in invalid_rows]
             QMessageBox.warning(
                 self,
-                "Validation errors",
-                "Fix these issues before sending:\n\n" + "\n".join(msg_lines),
+                "Validierungsfehler",
+                "Bitte beheben Sie folgende Fehler:\n\n" + "\n".join(msg_lines),
             )
             return
 
@@ -1013,8 +1019,8 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 QMessageBox.critical(
                     self,
-                    "Outlook error",
-                    f"Could not connect to Outlook:\n{exc}",
+                    "Outlook-Fehler",
+                    f"Verbindung zu Outlook fehlgeschlagen:\n{exc}",
                 )
                 return
 
@@ -1036,7 +1042,9 @@ class MainWindow(QMainWindow):
             try:
                 tpl = template_manager.load_template(topic, lang, TEMPLATES_DIR)
             except FileNotFoundError:
-                self._log_msg(f"SKIPPED {email} — no '{topic}' template for '{lang}'")
+                self._log_msg(
+                    f"UEBERSPRUNGEN {email} — keine '{topic}'-Vorlage fuer '{lang}'"
+                )
                 skipped += 1
                 self._progress.setValue(i + 1)
                 QApplication.processEvents()
@@ -1047,7 +1055,7 @@ class MainWindow(QMainWindow):
                 subject = tpl["subject"].format(**row)
                 body = tpl["body"].format(**row)
             except KeyError as exc:
-                self._log_msg(f"SKIPPED {email} — missing placeholder {exc}")
+                self._log_msg(f"UEBERSPRUNGEN {email} — fehlender Platzhalter {exc}")
                 skipped += 1
                 self._progress.setValue(i + 1)
                 QApplication.processEvents()
@@ -1067,7 +1075,7 @@ class MainWindow(QMainWindow):
             # Send or dry-run
             if dry_run:
                 result = mailer.dry_run_email(email, subject, body)
-                self._log_msg(f"DRY RUN {email}\n{result}")
+                self._log_msg(f"TESTLAUF {email}\n{result}")
                 sent += 1
             else:
                 try:
@@ -1079,16 +1087,16 @@ class MainWindow(QMainWindow):
                         image_paths=image_paths,
                         signature=self._signature_combo.currentData(),
                     )
-                    self._log_msg(f"SENT {email}")
+                    self._log_msg(f"GESENDET {email}")
                     sent += 1
                 except Exception as exc:
-                    self._log_msg(f"ERROR {email} — {exc}")
+                    self._log_msg(f"FEHLER {email} — {exc}")
                     errors += 1
 
             self._progress.setValue(i + 1)
             QApplication.processEvents()
 
-        mode = "dry-run" if dry_run else "send"
+        mode = "Testlauf" if dry_run else "Versand"
         self._summary_label.setText(
-            f"Done ({mode}): {sent} sent, {skipped} skipped, {errors} errors"
+            f"Fertig ({mode}): {sent} gesendet, {skipped} uebersprungen, {errors} Fehler"
         )

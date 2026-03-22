@@ -40,17 +40,17 @@ def validate_row(row: dict[str, str], available_languages: list[str]) -> list[st
 
     email = row.get("email", "").strip()
     if not email:
-        errors.append("Email is missing")
+        errors.append("E-Mail fehlt")
     elif not _EMAIL_RE.match(email):
-        errors.append(f"Email is malformed: {email}")
+        errors.append(f"E-Mail ungueltig: {email}")
 
     language = row.get("language", "").strip()
     if not language:
-        errors.append("Language is missing")
+        errors.append("Sprache fehlt")
     elif language not in available_languages:
         errors.append(
-            f"No template for language '{language}' "
-            f"(available: {', '.join(available_languages)})"
+            f"Keine Vorlage fuer Sprache '{language}' "
+            f"(verfuegbar: {', '.join(available_languages)})"
         )
 
     return errors

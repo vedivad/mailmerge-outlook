@@ -41,7 +41,9 @@ class ContactPickerDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Select Contacts" if multi_select else "Select Contact")
+        self.setWindowTitle(
+            "Kontakte auswaehlen" if multi_select else "Kontakt auswaehlen"
+        )
         self.resize(600, 450)
         self._contacts = contacts
         self._multi_select = multi_select
@@ -52,13 +54,13 @@ class ContactPickerDialog(QDialog):
 
         # Search bar
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter contacts...")
+        self._search.setPlaceholderText("Kontakte filtern...")
         self._search.textChanged.connect(self._apply_filter)
         layout.addWidget(self._search)
 
         # Select all (multi-select only)
         if multi_select:
-            self._select_all_cb = QCheckBox("Select all")
+            self._select_all_cb = QCheckBox("Alle auswaehlen")
             self._select_all_cb.stateChanged.connect(self._on_select_all)
             layout.addWidget(self._select_all_cb)
 
