@@ -7,6 +7,7 @@ vielen Dank fuer unser kuerzliches Gespraech ueber die Zusammenarbeit zwischen u
 Wir sind ueberzeugt, dass sich hier eine ausgezeichnete Moeglichkeit zur Zusammenarbeit bietet, und wuerden gerne ein weiteres Treffen vereinbaren.
 
 Bitte teilen Sie uns Ihre Verfuegbarkeit mit, damit wir einen Termin koordinieren koennen.
+Klick [hier](www.example.com) um unsere offenen Zeitfenster einzusehen.
 
 Mit freundlichen Gruessen,
 Das MailMerge-Team

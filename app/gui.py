@@ -184,6 +184,7 @@ class MainWindow(QMainWindow):
         self._rows: list[dict[str, str]] = []
         # Headers excluding "language" — language is determined by sub-tab
         self._headers: list[str] = []
+        self._loading_template: bool = False
 
         tabs = QTabWidget()
         tabs.addTab(self._build_contacts_tab(), "Contacts")
@@ -485,19 +486,35 @@ class MainWindow(QMainWindow):
         self._body_edit = QTextEdit()
         layout.addWidget(self._body_edit)
 
-        # Save button
-        btn_save_tpl = QPushButton("Save Template")
-        btn_save_tpl.clicked.connect(self._on_save_template)
-        layout.addWidget(btn_save_tpl)
+        # Bottom row: status + preview button + placeholder info
+        bottom_layout = QHBoxLayout()
 
-        # Placeholder info
+        self._save_status_label = QLabel()
+        bottom_layout.addWidget(self._save_status_label)
+
+        bottom_layout.addStretch()
+
         self._placeholder_label = QLabel()
         self._placeholder_label.setWordWrap(True)
-        layout.addWidget(self._placeholder_label)
+        bottom_layout.addWidget(self._placeholder_label)
 
-        # Update placeholders when text changes
-        self._subject_edit.textChanged.connect(self._update_placeholder_label)
-        self._body_edit.textChanged.connect(self._update_placeholder_label)
+        bottom_layout.addStretch()
+
+        btn_preview_tpl = QPushButton("Preview")
+        btn_preview_tpl.clicked.connect(self._on_preview_template)
+        bottom_layout.addWidget(btn_preview_tpl)
+
+        layout.addLayout(bottom_layout)
+
+        # Auto-save timer (debounce 500ms)
+        self._save_timer = QTimer()
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(500)
+        self._save_timer.timeout.connect(self._auto_save_template)
+
+        # Connect edits to debounce and placeholder update
+        self._subject_edit.textChanged.connect(self._on_template_edited)
+        self._body_edit.textChanged.connect(self._on_template_edited)
 
         return widget
 
@@ -553,17 +570,33 @@ class MainWindow(QMainWindow):
         topic = self._topic_combo.currentText()
         if not topic or not lang:
             return
+        # Suppress auto-save while loading
+        self._loading_template = True
         try:
             tpl = template_manager.load_template(topic, lang, _TEMPLATES_DIR)
         except FileNotFoundError:
             self._subject_edit.clear()
             self._body_edit.clear()
+            self._save_status_label.clear()
+            self._loading_template = False
             return
         self._subject_edit.setText(tpl["subject"])
         self._body_edit.setPlainText(tpl["body"])
+        self._save_status_label.setText("Saved")
+        self._save_status_label.setStyleSheet("color: gray;")
+        self._loading_template = False
 
-    def _on_save_template(self) -> None:
-        """Save the current subject/body to the selected topic/language file."""
+    def _on_template_edited(self) -> None:
+        """Mark as unsaved and restart the debounce timer."""
+        self._update_placeholder_label()
+        if getattr(self, "_loading_template", False):
+            return
+        self._save_status_label.setText("Unsaved changes...")
+        self._save_status_label.setStyleSheet("color: orange;")
+        self._save_timer.start()
+
+    def _auto_save_template(self) -> None:
+        """Save the current template to disk (called by debounce timer)."""
         topic = self._topic_combo.currentText()
         lang = self._lang_combo.currentText()
         if not topic or not lang:
@@ -575,9 +608,30 @@ class MainWindow(QMainWindow):
             self._body_edit.toPlainText(),
             _TEMPLATES_DIR,
         )
-        self._refresh_templates()
-        self._topic_combo.setCurrentText(topic)
-        self._lang_combo.setCurrentText(lang)
+        self._save_status_label.setText("Saved")
+        self._save_status_label.setStyleSheet("color: gray;")
+
+    def _on_preview_template(self) -> None:
+        """Show the current template body rendered as HTML."""
+        body = self._body_edit.toPlainText()
+        if not body.strip():
+            return
+        html = template_manager.render_html(body)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Template Preview")
+        dlg.resize(500, 400)
+        dlg_layout = QVBoxLayout(dlg)
+        subject = self._subject_edit.text()
+        if subject:
+            dlg_layout.addWidget(QLabel(f"<b>Subject:</b> {subject}"))
+        view = QTextEdit()
+        view.setReadOnly(True)
+        view.setHtml(html)
+        dlg_layout.addWidget(view)
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(dlg.accept)
+        dlg_layout.addWidget(btn_close)
+        dlg.exec()
 
     def _on_new_topic(self) -> None:
         """Prompt for a new topic name."""
