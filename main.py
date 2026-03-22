@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QApplication
 
 from app.gui import MainWindow
 
-_ICON_PATH = Path(__file__).resolve().parent / "icon.png"
+_ICON_PATH = Path(__file__).resolve().parent / "favicon.ico"
 
 
 def main() -> None:
