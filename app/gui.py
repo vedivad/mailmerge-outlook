@@ -73,11 +73,13 @@ class MainWindow(QMainWindow):
         btn_save = QPushButton("Save CSV")
         btn_add = QPushButton("Add Row")
         btn_del = QPushButton("Delete Row")
+        btn_add_col = QPushButton("Add Column")
         btn_load.clicked.connect(self._on_load_csv)
         btn_save.clicked.connect(self._on_save_csv)
         btn_add.clicked.connect(self._on_add_row)
         btn_del.clicked.connect(self._on_delete_row)
-        for btn in (btn_load, btn_save, btn_add, btn_del):
+        btn_add_col.clicked.connect(self._on_add_column)
+        for btn in (btn_load, btn_save, btn_add, btn_del, btn_add_col):
             btn_layout.addWidget(btn)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
@@ -129,18 +131,19 @@ class MainWindow(QMainWindow):
         """Highlight invalid rows in the contacts table."""
         languages = template_manager.list_languages(_TEMPLATES_DIR)
         table = self._contacts_table
-        ok_bg = QColor(Qt.GlobalColor.white)
-        err_bg = QColor(255, 200, 200)
+        err_bg = QColor(255, 80, 80, 60)
 
         for r in range(table.rowCount()):
             row_dict = self._table_row_to_dict(r)
             errors = contact_manager.validate_row(row_dict, languages)
-            bg = err_bg if errors else ok_bg
             tooltip = "; ".join(errors) if errors else ""
             for c in range(table.columnCount()):
                 item = table.item(r, c)
                 if item:
-                    item.setBackground(bg)
+                    if errors:
+                        item.setBackground(err_bg)
+                    else:
+                        item.setData(Qt.ItemDataRole.BackgroundRole, None)
                     item.setToolTip(tooltip)
 
     def _table_row_to_dict(self, row_index: int) -> dict[str, str]:
@@ -191,17 +194,44 @@ class MainWindow(QMainWindow):
             self._contacts_table.removeRow(row)
             self._validate_all_rows()
 
+    def _on_add_column(self) -> None:
+        """Add a new column (placeholder) to the contacts table."""
+        name, ok = QInputDialog.getText(
+            self, "Add Column", "Column name (e.g. title, department):"
+        )
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if name in self._headers:
+            QMessageBox.information(
+                self, "Add Column", f"Column '{name}' already exists."
+            )
+            return
+        self._headers.append(name)
+        table = self._contacts_table
+        table.blockSignals(True)
+        col = table.columnCount()
+        table.setColumnCount(col + 1)
+        table.setHorizontalHeaderLabels(self._headers)
+        for r in range(table.rowCount()):
+            table.setItem(r, col, QTableWidgetItem(""))
+        table.blockSignals(False)
+        self._validate_all_rows()
+
     def _on_cell_changed(self, row: int, _col: int) -> None:
         """Re-validate the edited row."""
         languages = template_manager.list_languages(_TEMPLATES_DIR)
         row_dict = self._table_row_to_dict(row)
         errors = contact_manager.validate_row(row_dict, languages)
-        bg = QColor(255, 200, 200) if errors else QColor(Qt.GlobalColor.white)
+        err_bg = QColor(255, 80, 80, 60)
         tooltip = "; ".join(errors) if errors else ""
         for c in range(self._contacts_table.columnCount()):
             item = self._contacts_table.item(row, c)
             if item:
-                item.setBackground(bg)
+                if errors:
+                    item.setBackground(err_bg)
+                else:
+                    item.setData(Qt.ItemDataRole.BackgroundRole, None)
                 item.setToolTip(tooltip)
 
     # ------------------------------------------------------------------

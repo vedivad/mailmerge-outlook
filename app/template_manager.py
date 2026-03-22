@@ -54,10 +54,14 @@ def extract_placeholders(text: str) -> list[str]:
     """Return sorted unique ``{placeholder}`` names found in *text*."""
     formatter = string.Formatter()
     names: set[str] = set()
-    for _, field_name, _, _ in formatter.parse(text):
-        if field_name is not None:
-            # Only keep the top-level name (before any '.' or '[')
-            root = field_name.split(".")[0].split("[")[0]
-            if root:
-                names.add(root)
+    try:
+        parsed = formatter.parse(text)
+        for _, field_name, _, _ in parsed:
+            if field_name is not None:
+                # Only keep the top-level name (before any '.' or '[')
+                root = field_name.split(".")[0].split("[")[0]
+                if root:
+                    names.add(root)
+    except ValueError:
+        pass
     return sorted(names)
