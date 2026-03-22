@@ -676,23 +676,40 @@ class MainWindow(QMainWindow):
         self._body_edit.setFocus()
 
     def _insert_link(self) -> None:
-        """Prompt for a URL and insert a markdown link."""
+        """Prompt for link text and URL, then insert a markdown link."""
         cursor = self._body_edit.textCursor()
         selected = cursor.selectedText()
-        link_text = selected if selected else "link text"
 
-        url, ok = QInputDialog.getText(self, "Insert Link", "URL:")
-        if not ok or not url.strip():
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Insert Link")
+        dlg_layout = QVBoxLayout(dlg)
+
+        dlg_layout.addWidget(QLabel("Display text:"))
+        text_edit = QLineEdit(selected if selected else "")
+        text_edit.setPlaceholderText("e.g. Click here")
+        dlg_layout.addWidget(text_edit)
+
+        dlg_layout.addWidget(QLabel("URL:"))
+        url_edit = QLineEdit()
+        url_edit.setPlaceholderText("e.g. https://example.com")
+        dlg_layout.addWidget(url_edit)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        dlg_layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        cursor.insertText(f"[{link_text}]({url.strip()})")
-        if not selected:
-            # Select "link text" so the user can type over it
-            pos = cursor.position()
-            url_part_len = len(f"]({url.strip()})")
-            cursor.setPosition(pos - url_part_len - len(link_text))
-            cursor.setPosition(pos - url_part_len, cursor.MoveMode.KeepAnchor)
-            self._body_edit.setTextCursor(cursor)
+        link_text = text_edit.text().strip() or "link"
+        url = url_edit.text().strip()
+        if not url:
+            return
+
+        cursor.insertText(f"[{link_text}]({url})")
         self._body_edit.setFocus()
 
     def _on_new_topic(self) -> None:
@@ -775,11 +792,7 @@ class MainWindow(QMainWindow):
         btn_preview.clicked.connect(self._on_preview)
         ctrl_layout.addWidget(btn_preview)
 
-        self._btn_send_all = QPushButton("Send All")
-        self._btn_send_all.clicked.connect(self._on_send_all)
-        ctrl_layout.addWidget(self._btn_send_all)
-
-        self._btn_send_sel = QPushButton("Send Selected")
+        self._btn_send_sel = QPushButton("Send")
         self._btn_send_sel.clicked.connect(self._on_send_selected)
         ctrl_layout.addWidget(self._btn_send_sel)
 
@@ -815,7 +828,7 @@ class MainWindow(QMainWindow):
     def _on_dry_run_toggled(self, checked: bool) -> None:
         """Enable or disable send buttons based on dry-run state and Outlook availability."""
         enabled = checked or mailer.OUTLOOK_AVAILABLE
-        for btn in (self._btn_send_all, self._btn_send_sel):
+        for btn in (self._btn_send_sel,):
             btn.setEnabled(enabled)
             if not enabled:
                 btn.setToolTip("Outlook is not available — enable dry run to test")
@@ -882,11 +895,6 @@ class MainWindow(QMainWindow):
         btn_close.clicked.connect(preview.accept)
         preview_layout.addWidget(btn_close)
         preview.exec()
-
-    def _on_send_all(self) -> None:
-        """Send emails to all contacts across all language tabs."""
-        rows = self._all_contacts()
-        self._send_emails(rows)
 
     def _on_send_selected(self) -> None:
         """Open a contact picker and send to the chosen contacts."""
