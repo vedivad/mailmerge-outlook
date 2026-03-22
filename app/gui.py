@@ -822,11 +822,19 @@ class MainWindow(QMainWindow):
             notice.setWordWrap(True)
             layout.addWidget(notice)
 
-        # Topic selector row
+        # Topic + Signature selector row
         topic_layout = QHBoxLayout()
         topic_layout.addWidget(QLabel("Topic:"))
         self._send_topic_combo = QComboBox()
         topic_layout.addWidget(self._send_topic_combo)
+
+        topic_layout.addWidget(QLabel("Signature:"))
+        self._signature_combo = QComboBox()
+        self._signature_combo.addItem("Default", None)
+        for sig in mailer.list_signatures():
+            self._signature_combo.addItem(sig, sig)
+        topic_layout.addWidget(self._signature_combo)
+
         topic_layout.addStretch()
         layout.addLayout(topic_layout)
 
@@ -1067,6 +1075,7 @@ class MainWindow(QMainWindow):
                         html_body,
                         outlook_app=outlook_app,
                         image_paths=image_paths,
+                        signature=self._signature_combo.currentData(),
                     )
                     self._log_msg(f"SENT {email}")
                     sent += 1
