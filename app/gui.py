@@ -365,6 +365,7 @@ class MainWindow(QMainWindow):
 
         self._dry_run_cb = QCheckBox("Dry run")
         self._dry_run_cb.setChecked(True)
+        self._dry_run_cb.toggled.connect(self._on_dry_run_toggled)
         ctrl_layout.addWidget(self._dry_run_cb)
 
         btn_preview = QPushButton("Preview")
@@ -382,11 +383,8 @@ class MainWindow(QMainWindow):
         ctrl_layout.addStretch()
         layout.addLayout(ctrl_layout)
 
-        # Disable real-send buttons when Outlook is unavailable
-        if not mailer.OUTLOOK_AVAILABLE:
-            for btn in (self._btn_send_all, self._btn_send_sel):
-                btn.setEnabled(False)
-                btn.setToolTip("Outlook is not available on this platform")
+        # Update send button state based on Outlook availability and dry-run
+        self._on_dry_run_toggled(self._dry_run_cb.isChecked())
 
         # Progress bar
         self._progress = QProgressBar()
@@ -406,6 +404,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._summary_label)
 
         return widget
+
+    def _on_dry_run_toggled(self, checked: bool) -> None:
+        """Enable or disable send buttons based on dry-run state and Outlook availability."""
+        enabled = checked or mailer.OUTLOOK_AVAILABLE
+        for btn in (self._btn_send_all, self._btn_send_sel):
+            btn.setEnabled(enabled)
+            if not enabled:
+                btn.setToolTip("Outlook is not available — enable dry run to test")
+            else:
+                btn.setToolTip("")
 
     def _log_msg(self, message: str) -> None:
         """Append a timestamped message to the send log."""
