@@ -88,11 +88,9 @@ class MainWindow(QMainWindow):
 
         btn_import = QPushButton("CSV importieren")
         btn_export = QPushButton("CSV exportieren")
-        btn_add_col = QPushButton("Spalte hinzufuegen")
         btn_import.clicked.connect(self._on_import_csv)
         btn_export.clicked.connect(self._on_export_csv)
-        btn_add_col.clicked.connect(self._on_add_column)
-        for btn in (btn_import, btn_export, btn_add_col):
+        for btn in (btn_import, btn_export):
             top_layout.addWidget(btn)
 
         self._contacts_save_status = QLabel()
@@ -130,6 +128,11 @@ class MainWindow(QMainWindow):
         )
         table.horizontalHeader().sectionClicked.connect(
             lambda col, la=lang: self._on_sort_column(la, col)
+        )
+        header = table.horizontalHeader()
+        header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        header.customContextMenuRequested.connect(
+            lambda pos, t=table: self._on_header_context_menu(t, pos)
         )
         self._lang_tables[lang] = table
         return table
@@ -345,6 +348,46 @@ class MainWindow(QMainWindow):
             table.setHorizontalHeaderLabels(self._headers)
             for r in range(table.rowCount()):
                 table.setItem(r, col, QTableWidgetItem(""))
+            table.blockSignals(False)
+        self._schedule_contacts_save()
+
+    def _on_header_context_menu(self, table: ExcelTable, pos) -> None:
+        """Show a context menu on the column header for add/remove column."""
+        header = table.horizontalHeader()
+        col = header.logicalIndexAt(pos)
+        menu = QMenu(self)
+
+        add_action = QAction("Spalte hinzufuegen", self)
+        add_action.triggered.connect(self._on_add_column)
+        menu.addAction(add_action)
+
+        if col >= 0:
+            col_name = self._headers[col] if col < len(self._headers) else ""
+            if col_name.lower() != "email":
+                remove_action = QAction(f"Spalte '{col_name}' entfernen", self)
+                remove_action.triggered.connect(lambda: self._remove_column(col))
+                menu.addAction(remove_action)
+
+        menu.exec(header.mapToGlobal(pos))
+
+    def _remove_column(self, col: int) -> None:
+        """Remove a column from all language tables and headers."""
+        if col < 0 or col >= len(self._headers):
+            return
+        col_name = self._headers[col]
+        reply = QMessageBox.question(
+            self,
+            "Spalte entfernen",
+            f"Spalte '{col_name}' wirklich aus allen Sprach-Tabs entfernen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._headers.pop(col)
+        for table in self._lang_tables.values():
+            table.blockSignals(True)
+            table.removeColumn(col)
+            table.setHorizontalHeaderLabels(self._headers)
             table.blockSignals(False)
         self._schedule_contacts_save()
 
