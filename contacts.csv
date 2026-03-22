@@ -1,4 +1,4 @@
-email,name,language,company
-alice@example.com,Alice Müller,de,Acme GmbH
-bob@example.com,Bob Smith,en,Example Ltd
-carol@example.com,Carol Jones,en,Sample AG
+email,name,company,language
+alice@example.com,Alice Müller,Acme GmbH,de
+bob@example.com,Bob Smith,Example Ltd,en
+carol@example.com,Carol Jones,Sample AG,en
