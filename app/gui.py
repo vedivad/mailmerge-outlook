@@ -881,9 +881,12 @@ class MainWindow(QMainWindow):
 
         topic_layout.addWidget(QLabel("Signatur:"))
         self._signature_combo = QComboBox()
-        self._signature_combo.addItem("Standard", None)
-        for sig in mailer.list_signatures():
+        self._signature_combo.addItem("Keine Signatur", None)
+        sigs = mailer.list_signatures()
+        for sig in sigs:
             self._signature_combo.addItem(sig, sig)
+        if sigs:
+            self._signature_combo.setCurrentIndex(1)  # Default to first signature
         topic_layout.addWidget(self._signature_combo)
 
         topic_layout.addStretch()
