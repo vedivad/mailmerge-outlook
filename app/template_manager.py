@@ -12,6 +12,8 @@ Each .txt file has the format:
 import string
 from pathlib import Path
 
+import markdown as _md
+
 TEMPLATES_DIR: Path = Path(__file__).resolve().parent.parent / "templates"
 
 
@@ -81,6 +83,19 @@ def save_template(
     path = topic_dir / f"{lang}.txt"
     path.write_text(f"{subject}\n\n{body}\n", encoding="utf-8")
     return path
+
+
+def render_html(text: str) -> str:
+    """Convert markdown-formatted *text* to an HTML email body.
+
+    Supports links, bold, italic, paragraphs, and line breaks.
+    """
+    html_body = _md.markdown(text, extensions=["nl2br"])
+    return (
+        '<div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt;">'
+        f"{html_body}"
+        "</div>"
+    )
 
 
 def extract_placeholders(text: str) -> list[str]:

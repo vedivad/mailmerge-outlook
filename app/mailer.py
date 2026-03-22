@@ -16,10 +16,10 @@ except ImportError:
 def send_email(
     to: str,
     subject: str,
-    body: str,
+    html_body: str,
     outlook_app: object | None = None,
 ) -> None:
-    """Send an email through Outlook.
+    """Send an HTML email through Outlook.
 
     Parameters
     ----------
@@ -27,8 +27,8 @@ def send_email(
         Recipient email address.
     subject:
         Email subject line.
-    body:
-        Email body text.
+    html_body:
+        Email body as HTML.
     outlook_app:
         An existing ``win32com.client.Dispatch('Outlook.Application')``
         instance.  If *None*, a new one is created.
@@ -50,7 +50,7 @@ def send_email(
     mail = outlook_app.CreateItem(0)  # 0 = olMailItem
     mail.To = to
     mail.Subject = subject
-    mail.Body = body
+    mail.HTMLBody = html_body
     mail.Send()
 
 

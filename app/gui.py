@@ -663,6 +663,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Preview", f"Missing placeholder value: {exc}")
             return
 
+        html_body = template_manager.render_html(body)
+
         dlg = QDialog(self)
         dlg.setWindowTitle("Email Preview")
         dlg.resize(500, 400)
@@ -671,7 +673,7 @@ class MainWindow(QMainWindow):
         dlg_layout.addWidget(QLabel(f"<b>Subject:</b> {subject}"))
         body_view = QTextEdit()
         body_view.setReadOnly(True)
-        body_view.setPlainText(body)
+        body_view.setHtml(html_body)
         dlg_layout.addWidget(body_view)
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(dlg.accept)
@@ -768,6 +770,8 @@ class MainWindow(QMainWindow):
                 QApplication.processEvents()
                 continue
 
+            html_body = template_manager.render_html(body)
+
             # Send or dry-run
             if dry_run:
                 result = mailer.dry_run_email(email, subject, body)
@@ -775,7 +779,9 @@ class MainWindow(QMainWindow):
                 sent += 1
             else:
                 try:
-                    mailer.send_email(email, subject, body, outlook_app=outlook_app)
+                    mailer.send_email(
+                        email, subject, html_body, outlook_app=outlook_app
+                    )
                     self._log_msg(f"SENT {email}")
                     sent += 1
                 except Exception as exc:
