@@ -150,6 +150,7 @@ class ContactsTab(QWidget):
 
         self._init_sentinel_row(table, len(rows))
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         table.blockSignals(False)
         self._validate_table(table)
 
@@ -240,6 +241,12 @@ class ContactsTab(QWidget):
 
     def _on_row_header_context_menu(self, table: ExcelTable, pos) -> None:
         """Show a right-click context menu on the row number header."""
+        clicked_row = table.verticalHeader().logicalIndexAt(pos)
+        if clicked_row >= 0 and clicked_row not in {
+            idx.row() for idx in table.selectedIndexes()
+        }:
+            table.selectRow(clicked_row)
+
         selected_rows = sorted(
             {
                 idx.row()
