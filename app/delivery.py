@@ -1,7 +1,6 @@
 """Email delivery backends (Outlook or SMTP) behind a simple interface."""
 
 import mimetypes
-import os
 import re
 import smtplib
 from dataclasses import dataclass
@@ -26,7 +25,7 @@ class DeliveryCapabilities:
 
 @dataclass(frozen=True)
 class _SmtpSettings:
-    """Resolved SMTP settings from environment variables."""
+    """Resolved SMTP settings from persisted application settings."""
 
     host: str
     port: int
@@ -43,7 +42,7 @@ def _settings() -> QSettings:
 
 
 def _as_bool(value: object, default: bool) -> bool:
-    """Parse a settings/environment value into a bool."""
+    """Parse a settings value into a bool."""
     if value is None:
         return default
     if isinstance(value, bool):
@@ -56,50 +55,43 @@ def _as_bool(value: object, default: bool) -> bool:
     return default
 
 
-def _value(key: str, env_name: str, default: str) -> str:
-    """Read string config from settings first, then environment."""
+def _value(key: str, default: str) -> str:
+    """Read string config from settings, using *default* when missing."""
     setting_value = _settings().value(key, "", type=str)
     if setting_value is not None and setting_value.strip() != "":
         return setting_value.strip()
-    env_value = os.getenv(env_name, "").strip()
-    if env_value:
-        return env_value
     return default
 
 
 def _provider() -> str:
     """Return the configured provider name."""
-    provider = _value("delivery/provider", "MAILMERGE_PROVIDER", "outlook").lower()
+    provider = _value("delivery/provider", "outlook").lower()
     return provider if provider in {"outlook", "smtp"} else "outlook"
 
 
 def _smtp_settings() -> _SmtpSettings:
-    """Read SMTP settings from settings with environment fallback."""
+    """Read SMTP settings from persisted application settings."""
     settings = _settings()
 
-    use_ssl_value = settings.value("delivery/smtp/use_ssl", None)
-    if use_ssl_value is None:
-        use_ssl_value = os.getenv("MAILMERGE_SMTP_SSL", "0")
+    use_ssl_value = settings.value("delivery/smtp/use_ssl", False)
     use_ssl = _as_bool(use_ssl_value, default=False)
 
     default_port = "465" if use_ssl else "587"
-    port_value = _value("delivery/smtp/port", "MAILMERGE_SMTP_PORT", default_port)
+    port_value = _value("delivery/smtp/port", default_port)
     try:
         port = int(port_value)
     except ValueError:
         port = int(default_port)
 
-    use_starttls_value = settings.value("delivery/smtp/use_starttls", None)
-    if use_starttls_value is None:
-        use_starttls_value = os.getenv("MAILMERGE_SMTP_STARTTLS", "1")
+    use_starttls_value = settings.value("delivery/smtp/use_starttls", True)
     use_starttls = _as_bool(use_starttls_value, default=True)
 
     return _SmtpSettings(
-        host=_value("delivery/smtp/host", "MAILMERGE_SMTP_HOST", ""),
+        host=_value("delivery/smtp/host", ""),
         port=port,
-        from_address=_value("delivery/smtp/from", "MAILMERGE_SMTP_FROM", ""),
-        username=_value("delivery/smtp/user", "MAILMERGE_SMTP_USER", ""),
-        password=_value("delivery/smtp/password", "MAILMERGE_SMTP_PASSWORD", ""),
+        from_address=_value("delivery/smtp/from", ""),
+        username=_value("delivery/smtp/user", ""),
+        password=_value("delivery/smtp/password", ""),
         use_ssl=use_ssl,
         use_starttls=use_starttls,
     )
@@ -118,8 +110,8 @@ def capabilities() -> DeliveryCapabilities:
                 supports_preview=False,
                 supports_draft=False,
                 unavailable_reason=(
-                    "SMTP is not configured. Set MAILMERGE_SMTP_HOST and "
-                    "MAILMERGE_SMTP_FROM."
+                    "SMTP is not configured. Open Settings > Email delivery and "
+                    "set SMTP host and From address."
                 ),
             )
         if bool(settings.username) != bool(settings.password):
@@ -129,8 +121,8 @@ def capabilities() -> DeliveryCapabilities:
                 supports_preview=False,
                 supports_draft=False,
                 unavailable_reason=(
-                    "SMTP auth is incomplete. Set both MAILMERGE_SMTP_USER and "
-                    "MAILMERGE_SMTP_PASSWORD, or neither."
+                    "SMTP auth is incomplete. Set both SMTP username and password, "
+                    "or leave both empty."
                 ),
             )
         return DeliveryCapabilities(

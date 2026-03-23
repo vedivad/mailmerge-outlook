@@ -67,25 +67,6 @@ Configure provider from the UI:
 - For SMTP, enter host, port, from address, credentials, and TLS options
 - The app prompts for restart after saving
 
-Environment variables are still supported as fallback (or for headless setups):
-
-```bash
-export MAILMERGE_PROVIDER=outlook  # or smtp
-```
-
-SMTP configuration:
-
-```bash
-export MAILMERGE_PROVIDER=smtp
-export MAILMERGE_SMTP_HOST=smtp.example.com
-export MAILMERGE_SMTP_PORT=587
-export MAILMERGE_SMTP_FROM=sender@example.com
-export MAILMERGE_SMTP_USER=sender@example.com
-export MAILMERGE_SMTP_PASSWORD=your-password
-export MAILMERGE_SMTP_STARTTLS=1
-export MAILMERGE_SMTP_SSL=0
-```
-
 Notes:
 
 - SMTP backend supports `Send` and `Dry run`.
