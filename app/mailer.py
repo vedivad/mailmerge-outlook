@@ -148,6 +148,7 @@ def send_email(
         _debug("Draft saved OK")
     else:
         _debug("Calling Send")
+        mail.Display(False)
         mail.Send()
         _debug("Send OK")
 
