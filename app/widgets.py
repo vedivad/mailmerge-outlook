@@ -1,7 +1,9 @@
 """Reusable widgets used across the MailMerge GUI."""
 
 from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -18,11 +20,15 @@ from PyQt6.QtWidgets import (
 
 
 class ExcelTable(QTableWidget):
-    """QTableWidget that moves down on Enter, like Excel."""
+    """QTableWidget with Enter-to-move-down, copy, and paste support."""
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
-        """Commit the current edit and move down on Enter/Return."""
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        """Handle Enter, Ctrl+C, and Ctrl+V."""
+        if event.matches(QKeySequence.StandardKey.Paste):
+            self._paste_clipboard()
+        elif event.matches(QKeySequence.StandardKey.Copy):
+            self._copy_selection()
+        elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             row = self.currentRow()
             col = self.currentColumn()
             super().keyPressEvent(event)
@@ -31,6 +37,46 @@ class ExcelTable(QTableWidget):
                 QTimer.singleShot(0, lambda: self.setCurrentCell(next_row, col))
         else:
             super().keyPressEvent(event)
+
+    def _copy_selection(self) -> None:
+        """Copy selected cells to clipboard as tab-separated text."""
+        selection = self.selectedRanges()
+        if not selection:
+            return
+        sr = selection[0]
+        lines: list[str] = []
+        for r in range(sr.topRow(), sr.bottomRow() + 1):
+            row_texts: list[str] = []
+            for c in range(sr.leftColumn(), sr.rightColumn() + 1):
+                item = self.item(r, c)
+                row_texts.append(item.text() if item else "")
+            lines.append("\t".join(row_texts))
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText("\n".join(lines))
+
+    def _paste_clipboard(self) -> None:
+        """Paste tab-separated clipboard text into cells starting at the current cell."""
+        clipboard = QApplication.clipboard()
+        if not clipboard:
+            return
+        text = clipboard.text()
+        if not text:
+            return
+        start_row = self.currentRow()
+        start_col = self.currentColumn()
+        for r, line in enumerate(text.split("\n")):
+            if not line:
+                continue
+            for c, value in enumerate(line.split("\t")):
+                target_row = start_row + r
+                target_col = start_col + c
+                if target_row < self.rowCount() and target_col < self.columnCount():
+                    item = self.item(target_row, target_col)
+                    if item:
+                        item.setText(value)
+                    else:
+                        self.setItem(target_row, target_col, QTableWidgetItem(value))
 
 
 class ContactPickerDialog(QDialog):
