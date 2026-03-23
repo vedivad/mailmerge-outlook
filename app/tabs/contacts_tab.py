@@ -358,6 +358,7 @@ class ContactsTab(QWidget):
             table.blockSignals(True)
             table.removeColumn(col)
             table.setHorizontalHeaderLabels(self._headers)
+            table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             table.blockSignals(False)
         self._schedule_contacts_save()
 
