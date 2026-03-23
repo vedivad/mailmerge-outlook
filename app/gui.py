@@ -562,7 +562,7 @@ class MainWindow(QMainWindow):
             ("Courier New", "'Courier New', monospace"),
         ]:
             self._font_combo.addItem(label, css)
-        self._font_combo.setCurrentText("Calibri")
+        self._font_combo.setCurrentText("Verdana")
         fmt_layout.addWidget(self._font_combo)
 
         # Font size selector
@@ -570,7 +570,7 @@ class MainWindow(QMainWindow):
         self._font_size_combo.setToolTip("Schriftgroesse")
         for size in ["8pt", "9pt", "10pt", "11pt", "12pt", "14pt", "16pt", "18pt"]:
             self._font_size_combo.addItem(size)
-        self._font_size_combo.setCurrentText("11pt")
+        self._font_size_combo.setCurrentText("10pt")
         fmt_layout.addWidget(self._font_size_combo)
 
         btn_bold = QPushButton("B")
@@ -915,16 +915,6 @@ class MainWindow(QMainWindow):
         self._send_topic_combo = QComboBox()
         topic_layout.addWidget(self._send_topic_combo)
 
-        topic_layout.addWidget(QLabel("Signatur:"))
-        self._signature_combo = QComboBox()
-        self._signature_combo.addItem("Keine Signatur", None)
-        sigs = mailer.list_signatures()
-        for sig in sigs:
-            self._signature_combo.addItem(sig, sig)
-        if sigs:
-            self._signature_combo.setCurrentIndex(1)  # Default to first signature
-        topic_layout.addWidget(self._signature_combo)
-
         topic_layout.addStretch()
         layout.addLayout(topic_layout)
 
@@ -1171,7 +1161,6 @@ class MainWindow(QMainWindow):
                         html_body,
                         outlook_app=outlook_app,
                         image_paths=image_paths,
-                        signature=self._signature_combo.currentData(),
                     )
                     self._log_msg(f"GESENDET {email}")
                     sent += 1

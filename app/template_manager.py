@@ -91,8 +91,8 @@ def render_html(
     topic: str | None = None,
     templates_dir: Path = TEMPLATES_DIR,
     use_cid: bool = False,
-    font_family: str = "Calibri, Arial, sans-serif",
-    font_size: str = "11pt",
+    font_family: str = "'Verdana', sans-serif",
+    font_size: str = "10pt",
 ) -> str:
     """Convert markdown-formatted *text* to an HTML email body.
 

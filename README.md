@@ -14,7 +14,7 @@ A PyQt6 desktop application that sends personalized bulk emails through Microsof
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt   # pywin32 will fail — that's expected
+pip install -r requirements.txt
 python main.py
 ```
 
