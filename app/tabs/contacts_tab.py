@@ -120,9 +120,10 @@ class ContactsTab(QWidget):
         table.cellChanged.connect(
             lambda row, col, la=lang: self._on_cell_changed(la, row, col)
         )
-        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        table.customContextMenuRequested.connect(
-            lambda pos, t=table: self._on_table_context_menu(t, pos)
+        vheader = table.verticalHeader()
+        vheader.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        vheader.customContextMenuRequested.connect(
+            lambda pos, t=table: self._on_row_header_context_menu(t, pos)
         )
         table.horizontalHeader().sectionClicked.connect(
             lambda col, la=lang: self._on_sort_column(la, col)
@@ -237,24 +238,35 @@ class ContactsTab(QWidget):
             rows = self.all_contacts()
             contact_manager.save_csv(Path(path), rows)
 
-    def _on_table_context_menu(self, table: ExcelTable, pos) -> None:
-        """Show a right-click context menu for the contacts table."""
-        row = table.rowAt(pos.y())
-        if row < 0 or row >= self._data_row_count(table):
+    def _on_row_header_context_menu(self, table: ExcelTable, pos) -> None:
+        """Show a right-click context menu on the row number header."""
+        selected_rows = sorted(
+            {
+                idx.row()
+                for idx in table.selectedIndexes()
+                if idx.row() < self._data_row_count(table)
+            }
+        )
+        if not selected_rows:
             return
 
         menu = QMenu(table)
-        delete_action = QAction("Zeile loeschen", table)
-        delete_action.triggered.connect(lambda: self._delete_row(table, row))
+        if len(selected_rows) == 1:
+            label = "Zeile loeschen"
+        else:
+            label = f"{len(selected_rows)} Zeilen loeschen"
+        delete_action = QAction(label, table)
+        delete_action.triggered.connect(lambda: self._delete_rows(table, selected_rows))
         menu.addAction(delete_action)
-        menu.exec(table.viewport().mapToGlobal(pos))
+        menu.exec(table.verticalHeader().mapToGlobal(pos))
 
-    def _delete_row(self, table: ExcelTable, row: int) -> None:
-        """Delete a specific row from a contacts table."""
-        if 0 <= row < self._data_row_count(table):
-            table.removeRow(row)
-            self._validate_table(table)
-            self._schedule_contacts_save()
+    def _delete_rows(self, table: ExcelTable, rows: list[int]) -> None:
+        """Delete one or more rows from a contacts table."""
+        for row in reversed(rows):
+            if 0 <= row < self._data_row_count(table):
+                table.removeRow(row)
+        self._validate_table(table)
+        self._schedule_contacts_save()
 
     def _on_add_column(self) -> None:
         """Add a new column (placeholder) to all language tables."""
@@ -358,7 +370,9 @@ class ContactsTab(QWidget):
             table.blockSignals(True)
             table.removeColumn(col)
             table.setHorizontalHeaderLabels(self._headers)
-            table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Stretch
+            )
             table.blockSignals(False)
         self._schedule_contacts_save()
 
@@ -409,8 +423,11 @@ class ContactsTab(QWidget):
                 table.insertRow(new_sentinel)
                 self._init_sentinel_row(table, new_sentinel)
                 table.blockSignals(False)
-                col = table.currentColumn()
-                QTimer.singleShot(0, lambda: table.setCurrentCell(new_sentinel, col))
+                if table.enter_pressed:
+                    col = table.currentColumn()
+                    QTimer.singleShot(
+                        0, lambda: table.setCurrentCell(new_sentinel, col)
+                    )
 
         if row >= self._data_row_count(table):
             return

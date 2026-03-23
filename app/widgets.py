@@ -22,6 +22,9 @@ from PyQt6.QtWidgets import (
 class ExcelTable(QTableWidget):
     """QTableWidget with Enter-to-move-down, copy, and paste support."""
 
+    enter_pressed: bool = False
+    """True when the most recent commit was triggered by Enter/Return."""
+
     def keyPressEvent(self, event) -> None:  # noqa: N802
         """Handle Enter, Ctrl+C, and Ctrl+V."""
         if event.matches(QKeySequence.StandardKey.Paste):
@@ -29,6 +32,7 @@ class ExcelTable(QTableWidget):
         elif event.matches(QKeySequence.StandardKey.Copy):
             self._copy_selection()
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.enter_pressed = True
             row = self.currentRow()
             col = self.currentColumn()
             super().keyPressEvent(event)
@@ -36,6 +40,7 @@ class ExcelTable(QTableWidget):
             if next_row < self.rowCount():
                 QTimer.singleShot(0, lambda: self.setCurrentCell(next_row, col))
         else:
+            self.enter_pressed = False
             super().keyPressEvent(event)
 
     def _copy_selection(self) -> None:
