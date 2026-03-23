@@ -29,8 +29,8 @@ jobs:
           --onedir --windowed
           --icon=favicon.ico
           --name MailMerge
-          --add-data "templates;templates"
-          --add-data "contacts.csv;."
+          --add-data "data/templates;data/templates"
+          --add-data "data/contacts.csv;data"
           --add-data "favicon.ico;."
           main.py
 

@@ -13,7 +13,7 @@ A PyQt6 desktop app for personalized bulk email from CSV contacts and per-langua
 
 ## Template Format
 
-Templates live in `templates/<topic>/<language>.txt`:
+Templates live in `data/templates/<topic>/<language>.txt`:
 
 ```
 Subject line with {placeholders}

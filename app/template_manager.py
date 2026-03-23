@@ -1,7 +1,7 @@
 """Load, save, and inspect email templates.
 
-Templates live in topic sub-folders of the templates/ directory. Each topic
-folder contains one .txt file per language (e.g. ``templates/partnership/en.txt``).
+Templates live in topic sub-folders of the data/templates/ directory. Each topic
+folder contains one .txt file per language (e.g. ``data/templates/partnership/en.txt``).
 
 Each .txt file has the format:
   Line 1:    Subject (may contain {placeholders})
@@ -99,7 +99,8 @@ def resolve_template(text: str, context: dict[str, str]) -> str:
     Boolean columns (names ending with ``?``) are converted to ``True``/``False``
     in the context automatically.
     """
-    # Expand boolean shorthand: {col?:yes_val:no_val} → {% if col? %}yes_val{% else %}no_val{% endif %}
+    # Expand boolean shorthand:
+    # {col?:yes_val:no_val} -> {% if col? %}yes_val{% else %}no_val{% endif %}
     text = re.sub(
         r"\{([a-zA-Z_][a-zA-Z0-9_]*\?):([^}:]*):([^}]*)\}",
         r"{% if \1 %}\2{% else %}\3{% endif %}",

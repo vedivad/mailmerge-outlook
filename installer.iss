@@ -11,7 +11,7 @@ SetupIconFile=favicon.ico
 UninstallDisplayIcon={app}\MailMerge.exe
 
 [Files]
-; PyInstaller --add-data already bundles templates, contacts.csv, and favicon.ico into dist\MailMerge\
+; PyInstaller --add-data already bundles data/templates, data/contacts.csv, and favicon.ico into dist\MailMerge\
 Source: "dist\MailMerge\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
