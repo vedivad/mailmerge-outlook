@@ -296,12 +296,48 @@ class ContactsTab(QWidget):
             rename_action.triggered.connect(lambda: self._rename_column(col))
             menu.addAction(rename_action)
 
+            if col > 0:
+                move_left = QAction(f"Spalte '{col_name}' nach links", self)
+                move_left.triggered.connect(lambda: self._move_column(col, col - 1))
+                menu.addAction(move_left)
+
+            if col < len(self._headers) - 1:
+                move_right = QAction(f"Spalte '{col_name}' nach rechts", self)
+                move_right.triggered.connect(lambda: self._move_column(col, col + 1))
+                menu.addAction(move_right)
+
             if col_name.lower() != "email":
                 remove_action = QAction(f"Spalte '{col_name}' entfernen", self)
                 remove_action.triggered.connect(lambda: self._remove_column(col))
                 menu.addAction(remove_action)
 
         menu.exec(header.mapToGlobal(pos))
+
+    def _move_column(self, old_col: int, new_col: int) -> None:
+        """Move a column from *old_col* to *new_col* across all language tables."""
+        if old_col == new_col:
+            return
+        # Swap in headers
+        self._headers[old_col], self._headers[new_col] = (
+            self._headers[new_col],
+            self._headers[old_col],
+        )
+        # Swap cell data in every table
+        for table in self._lang_tables.values():
+            table.blockSignals(True)
+            for r in range(table.rowCount()):
+                item_a = table.item(r, old_col)
+                item_b = table.item(r, new_col)
+                text_a = item_a.text() if item_a else ""
+                text_b = item_b.text() if item_b else ""
+                if item_a:
+                    item_a.setText(text_b)
+                if item_b:
+                    item_b.setText(text_a)
+            table.setHorizontalHeaderLabels(self._headers)
+            table.blockSignals(False)
+            self._validate_table(table)
+        self._schedule_contacts_save()
 
     def _remove_column(self, col: int) -> None:
         """Remove a column from all language tables and headers."""
