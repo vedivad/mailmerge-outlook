@@ -1,0 +1,51 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: >
+          python -m PyInstaller
+          --onedir --windowed
+          --icon=favicon.ico
+          --name MailMerge
+          --add-data "templates;templates"
+          --add-data "contacts.csv;."
+          --add-data "favicon.ico;."
+          main.py
+
+      - name: Zip portable build
+        run: Compress-Archive -Path dist\MailMerge\* -DestinationPath dist\MailMerge-Portable.zip
+        shell: pwsh
+
+      - name: Build installer with Inno Setup
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+        shell: pwsh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/MailMerge-Portable.zip
+            Output/MailMerge-Setup.exe
