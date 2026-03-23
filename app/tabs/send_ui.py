@@ -1,0 +1,109 @@
+"""Layout definition for the Send tab."""
+
+from dataclasses import dataclass
+
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QSizePolicy,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app import mailer
+
+
+@dataclass
+class SendWidgets:
+    """References to all widgets the SendTab controller needs."""
+
+    topic_combo: QComboBox
+    btn_dry_run: QPushButton
+    btn_draft: QPushButton
+    btn_send: QPushButton
+    btn_preview: QPushButton
+    progress: QProgressBar
+    log: QTextEdit
+    summary_label: QLabel
+
+
+def build(parent: QWidget) -> SendWidgets:
+    """Build the Send tab layout on *parent* and return widget references."""
+    layout = QVBoxLayout(parent)
+
+    # Outlook availability notice
+    if not mailer.OUTLOOK_AVAILABLE:
+        notice = QLabel(
+            "\u26a0 Outlook ist auf dieser Plattform nicht verfuegbar. "
+            "Nur der Testlauf-Modus ist funktionsfaehig."
+        )
+        notice.setStyleSheet(
+            "color: #b45309; background: #fef3c7; padding: 6px; border-radius: 4px;"
+        )
+        notice.setWordWrap(True)
+        layout.addWidget(notice)
+
+    # Topic selector row
+    topic_layout = QHBoxLayout()
+    topic_layout.addWidget(QLabel("Thema:"))
+    topic_combo = QComboBox()
+    topic_layout.addWidget(topic_combo)
+    topic_layout.addStretch()
+    layout.addLayout(topic_layout)
+
+    # Controls row
+    ctrl_layout = QHBoxLayout()
+
+    btn_dry_run = QPushButton("Testlauf")
+    ctrl_layout.addWidget(btn_dry_run)
+
+    btn_draft = QPushButton("Entwurf")
+    btn_draft.setEnabled(mailer.OUTLOOK_AVAILABLE)
+    if not mailer.OUTLOOK_AVAILABLE:
+        btn_draft.setToolTip("Outlook nicht verfuegbar")
+    ctrl_layout.addWidget(btn_draft)
+
+    btn_send = QPushButton("Senden")
+    btn_send.setEnabled(mailer.OUTLOOK_AVAILABLE)
+    if not mailer.OUTLOOK_AVAILABLE:
+        btn_send.setToolTip("Outlook nicht verfuegbar")
+    ctrl_layout.addWidget(btn_send)
+
+    ctrl_layout.addStretch()
+
+    btn_preview = QPushButton("Vorschau (Outlook)")
+    btn_preview.setEnabled(mailer.OUTLOOK_AVAILABLE)
+    if not mailer.OUTLOOK_AVAILABLE:
+        btn_preview.setToolTip("Outlook nicht verfuegbar")
+    ctrl_layout.addWidget(btn_preview)
+    layout.addLayout(ctrl_layout)
+
+    # Progress bar
+    progress = QProgressBar()
+    progress.setValue(0)
+    layout.addWidget(progress)
+
+    # Log panel
+    log = QTextEdit()
+    log.setReadOnly(True)
+    log.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    layout.addWidget(log)
+
+    # Summary
+    summary_label = QLabel()
+    layout.addWidget(summary_label)
+
+    return SendWidgets(
+        topic_combo=topic_combo,
+        btn_dry_run=btn_dry_run,
+        btn_draft=btn_draft,
+        btn_send=btn_send,
+        btn_preview=btn_preview,
+        progress=progress,
+        log=log,
+        summary_label=summary_label,
+    )

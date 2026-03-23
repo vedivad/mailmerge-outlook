@@ -6,22 +6,17 @@ from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
     QFileDialog,
-    QHBoxLayout,
     QHeaderView,
     QInputDialog,
-    QLabel,
-    QLineEdit,
     QMenu,
     QMessageBox,
-    QPushButton,
-    QTabWidget,
     QTableWidgetItem,
-    QVBoxLayout,
     QWidget,
 )
 
 from app import contact_manager, template_manager
 from app.config import DEFAULT_CSV, PROJECT_DIR, TEMPLATES_DIR
+from app.tabs import contacts_ui
 from app.widgets import ExcelTable
 
 
@@ -35,40 +30,23 @@ class ContactsTab(QWidget):
         self._headers: list[str] = []
         self._loading_contacts: bool = False
         self._sort_state: dict[str, tuple[int, bool]] = {}
-
-        layout = QVBoxLayout(self)
-
-        # Top row: search + buttons
-        top_layout = QHBoxLayout()
-
-        self._contacts_search = QLineEdit()
-        self._contacts_search.setPlaceholderText("Kontakte filtern...")
-        self._contacts_search.setClearButtonEnabled(True)
-        self._contacts_search.textChanged.connect(self._on_contacts_filter_changed)
-        top_layout.addWidget(self._contacts_search)
-
-        btn_import = QPushButton("CSV importieren")
-        btn_export = QPushButton("CSV exportieren")
-        btn_import.clicked.connect(self._on_import_csv)
-        btn_export.clicked.connect(self._on_export_csv)
-        for btn in (btn_import, btn_export):
-            top_layout.addWidget(btn)
-
-        self._contacts_save_status = QLabel()
-        top_layout.addWidget(self._contacts_save_status)
-
-        layout.addLayout(top_layout)
-
-        # Language sub-tabs — one table per language
-        self._lang_tabs = QTabWidget()
         self._lang_tables: dict[str, ExcelTable] = {}
-        layout.addWidget(self._lang_tabs)
+
+        # Build UI
+        self._ui = contacts_ui.build(self)
+
+        # Wire signals
+        self._ui.search.textChanged.connect(self._on_contacts_filter_changed)
+        self._ui.btn_import.clicked.connect(self._on_import_csv)
+        self._ui.btn_export.clicked.connect(self._on_export_csv)
 
         # Auto-save timer (debounce 500ms)
         self._save_timer = QTimer()
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(500)
         self._save_timer.timeout.connect(self._auto_save_contacts)
+
+    # -- Public API --
 
     def load_csv(self, path: Path) -> None:
         """Load a CSV file into the contacts tables, split by language."""
@@ -92,8 +70,8 @@ class ContactsTab(QWidget):
 
     def rebuild_lang_tabs(self) -> None:
         """Rebuild the language sub-tabs from current data."""
-        self._lang_tabs.blockSignals(True)
-        self._lang_tabs.clear()
+        self._ui.lang_tabs.blockSignals(True)
+        self._ui.lang_tabs.clear()
         self._lang_tables.clear()
 
         languages = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
@@ -108,7 +86,7 @@ class ContactsTab(QWidget):
         for lang in languages:
             table = self._make_table(lang)
             self._populate_table(table, rows_by_lang.get(lang, []))
-            self._lang_tabs.addTab(table, lang)
+            self._ui.lang_tabs.addTab(table, lang)
 
         other_rows = []
         for lang, rows in rows_by_lang.items():
@@ -117,15 +95,15 @@ class ContactsTab(QWidget):
         if other_rows:
             table = self._make_table("other")
             self._populate_table(table, other_rows)
-            self._lang_tabs.addTab(table, "other")
+            self._ui.lang_tabs.addTab(table, "other")
 
-        self._lang_tabs.blockSignals(False)
+        self._ui.lang_tabs.blockSignals(False)
 
     def all_contacts(self) -> list[dict[str, str]]:
         """Gather all contacts from all language tabs, with language added."""
         rows: list[dict[str, str]] = []
-        for i in range(self._lang_tabs.count()):
-            lang = self._lang_tabs.tabText(i)
+        for i in range(self._ui.lang_tabs.count()):
+            lang = self._ui.lang_tabs.tabText(i)
             table = self._lang_tables[lang]
             for r in range(self._data_row_count(table)):
                 row = self._table_row_to_dict(table, r)
@@ -223,6 +201,21 @@ class ContactsTab(QWidget):
                         item.setData(Qt.ItemDataRole.BackgroundRole, None)
                     item.setToolTip(tooltip)
 
+    def _schedule_contacts_save(self) -> None:
+        """Mark contacts as unsaved and restart the debounce timer."""
+        if self._loading_contacts:
+            return
+        self._ui.save_status.setText("Ungespeichert...")
+        self._ui.save_status.setStyleSheet("color: orange;")
+        self._save_timer.start()
+
+    def _auto_save_contacts(self) -> None:
+        """Save all contacts to the default CSV (called by debounce timer)."""
+        rows = self.all_contacts()
+        contact_manager.save_csv(self._contacts_path, rows)
+        self._ui.save_status.setText("Gespeichert")
+        self._ui.save_status.setStyleSheet("color: gray;")
+
     # -- Slots --
 
     def _on_import_csv(self) -> None:
@@ -242,21 +235,6 @@ class ContactsTab(QWidget):
         if path:
             rows = self.all_contacts()
             contact_manager.save_csv(Path(path), rows)
-
-    def _schedule_contacts_save(self) -> None:
-        """Mark contacts as unsaved and restart the debounce timer."""
-        if self._loading_contacts:
-            return
-        self._contacts_save_status.setText("Ungespeichert...")
-        self._contacts_save_status.setStyleSheet("color: orange;")
-        self._save_timer.start()
-
-    def _auto_save_contacts(self) -> None:
-        """Save all contacts to the default CSV (called by debounce timer)."""
-        rows = self.all_contacts()
-        contact_manager.save_csv(self._contacts_path, rows)
-        self._contacts_save_status.setText("Gespeichert")
-        self._contacts_save_status.setStyleSheet("color: gray;")
 
     def _on_table_context_menu(self, table: ExcelTable, pos) -> None:
         """Show a right-click context menu for the contacts table."""

@@ -5,11 +5,9 @@ from pathlib import Path
 
 from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -22,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from app import template_manager
 from app.config import TEMPLATES_DIR
+from app.tabs import templates_ui
 
 
 class TemplatesTab(QWidget):
@@ -33,117 +32,27 @@ class TemplatesTab(QWidget):
         super().__init__(parent)
         self._loading_template: bool = False
 
-        layout = QVBoxLayout(self)
+        # Build UI
+        self._ui = templates_ui.build(self)
 
-        # Topic + Language selector row
-        sel_layout = QHBoxLayout()
-
-        sel_layout.addWidget(QLabel("Thema:"))
-        self._topic_combo = QComboBox()
-        self._topic_combo.currentTextChanged.connect(self._on_topic_changed)
-        sel_layout.addWidget(self._topic_combo)
-
-        btn_new_topic = QPushButton("Neues Thema")
-        btn_new_topic.clicked.connect(self._on_new_topic)
-        sel_layout.addWidget(btn_new_topic)
-
-        sel_layout.addWidget(QLabel("Sprache:"))
-        self._lang_combo = QComboBox()
-        self._lang_combo.currentTextChanged.connect(self._on_template_selection_changed)
-        sel_layout.addWidget(self._lang_combo)
-
-        btn_new_lang = QPushButton("Neue Sprache")
-        btn_new_lang.clicked.connect(self._on_new_language)
-        sel_layout.addWidget(btn_new_lang)
-
-        sel_layout.addStretch()
-        layout.addLayout(sel_layout)
-
-        # Subject
-        layout.addWidget(QLabel("Betreff:"))
-        self._subject_edit = QLineEdit()
-        layout.addWidget(self._subject_edit)
-
-        # Body
-        layout.addWidget(QLabel("Inhalt:"))
-
-        # Formatting toolbar
-        fmt_layout = QHBoxLayout()
-
-        self._font_combo = QComboBox()
-        self._font_combo.setToolTip("Schriftart")
-        for label, css in [
-            ("Calibri", "'Calibri', Arial, sans-serif"),
-            ("Arial", "'Arial', sans-serif"),
-            ("Verdana", "'Verdana', sans-serif"),
-            ("Tahoma", "'Tahoma', sans-serif"),
-            ("Segoe UI", "'Segoe UI', sans-serif"),
-            ("Aptos", "'Aptos', sans-serif"),
-            ("Trebuchet MS", "'Trebuchet MS', sans-serif"),
-            ("Times New Roman", "'Times New Roman', serif"),
-            ("Georgia", "'Georgia', serif"),
-            ("Courier New", "'Courier New', monospace"),
-        ]:
-            self._font_combo.addItem(label, css)
-        self._font_combo.setCurrentText("Verdana")
-        fmt_layout.addWidget(self._font_combo)
-
-        self._font_size_combo = QComboBox()
-        self._font_size_combo.setToolTip("Schriftgroesse")
-        for size in ["8pt", "9pt", "10pt", "11pt", "12pt", "14pt", "16pt", "18pt"]:
-            self._font_size_combo.addItem(size)
-        self._font_size_combo.setCurrentText("10pt")
-        fmt_layout.addWidget(self._font_size_combo)
-
-        btn_bold = QPushButton("B")
-        btn_bold.setFixedWidth(32)
-        btn_bold.setStyleSheet("font-weight: bold;")
-        btn_bold.setToolTip("Fett")
-        btn_bold.clicked.connect(lambda: self._insert_format("**", "**", "Fettschrift"))
-
-        btn_italic = QPushButton("I")
-        btn_italic.setFixedWidth(32)
-        btn_italic.setStyleSheet("font-style: italic;")
-        btn_italic.setToolTip("Kursiv")
-        btn_italic.clicked.connect(
+        # Wire signals
+        self._ui.topic_combo.currentTextChanged.connect(self._on_topic_changed)
+        self._ui.lang_combo.currentTextChanged.connect(
+            self._on_template_selection_changed
+        )
+        self._ui.btn_new_topic.clicked.connect(self._on_new_topic)
+        self._ui.btn_new_lang.clicked.connect(self._on_new_language)
+        self._ui.btn_bold.clicked.connect(
+            lambda: self._insert_format("**", "**", "Fettschrift")
+        )
+        self._ui.btn_italic.clicked.connect(
             lambda: self._insert_format("*", "*", "Kursivschrift")
         )
-
-        btn_link = QPushButton("Link")
-        btn_link.setToolTip("Link einfuegen")
-        btn_link.clicked.connect(self._insert_link)
-
-        btn_image = QPushButton("Bild")
-        btn_image.setToolTip("Bild einfuegen")
-        btn_image.clicked.connect(self._insert_image)
-
-        for btn in (btn_bold, btn_italic, btn_link, btn_image):
-            fmt_layout.addWidget(btn)
-        fmt_layout.addStretch()
-        layout.addLayout(fmt_layout)
-
-        self._body_edit = QTextEdit()
-        layout.addWidget(self._body_edit)
-
-        # Bottom row: status + preview button + placeholder info
-        bottom_layout = QHBoxLayout()
-
-        self._save_status_label = QLabel()
-        bottom_layout.addWidget(self._save_status_label)
-
-        bottom_layout.addStretch()
-
-        self._placeholder_label = QLabel()
-        self._placeholder_label.setWordWrap(True)
-        bottom_layout.addWidget(self._placeholder_label)
-
-        bottom_layout.addStretch()
-
-        btn_preview_tpl = QPushButton("Vorschau")
-        btn_preview_tpl.clicked.connect(self._on_preview_template)
-        bottom_layout.addWidget(btn_preview_tpl)
-
-        layout.addLayout(bottom_layout)
+        self._ui.btn_link.clicked.connect(self._insert_link)
+        self._ui.btn_image.clicked.connect(self._insert_image)
+        self._ui.btn_preview.clicked.connect(self._on_preview_template)
+        self._ui.subject_edit.textChanged.connect(self._on_template_edited)
+        self._ui.body_edit.textChanged.connect(self._on_template_edited)
 
         # Auto-save timer (debounce 500ms)
         self._save_timer = QTimer()
@@ -151,38 +60,35 @@ class TemplatesTab(QWidget):
         self._save_timer.setInterval(500)
         self._save_timer.timeout.connect(self._auto_save_template)
 
-        self._subject_edit.textChanged.connect(self._on_template_edited)
-        self._body_edit.textChanged.connect(self._on_template_edited)
-
     # -- Public API --
 
     def font_kwargs(self) -> dict[str, str]:
         """Return the current font settings as kwargs for render_html."""
         return {
-            "font_family": self._font_combo.currentData()
-            or self._font_combo.currentText(),
-            "font_size": self._font_size_combo.currentText(),
+            "font_family": self._ui.font_combo.currentData()
+            or self._ui.font_combo.currentText(),
+            "font_size": self._ui.font_size_combo.currentText(),
         }
 
     def current_topic(self) -> str:
         """Return the currently selected topic name."""
-        return self._topic_combo.currentText()
+        return self._ui.topic_combo.currentText()
 
     def refresh(self) -> list[str]:
         """Reload topic/language combos from disk. Returns the topic list."""
         topics = template_manager.list_topics(TEMPLATES_DIR)
 
-        prev_topic = self._topic_combo.currentText()
-        self._topic_combo.blockSignals(True)
-        self._topic_combo.clear()
-        self._topic_combo.addItems(topics)
-        self._topic_combo.blockSignals(False)
+        prev_topic = self._ui.topic_combo.currentText()
+        self._ui.topic_combo.blockSignals(True)
+        self._ui.topic_combo.clear()
+        self._ui.topic_combo.addItems(topics)
+        self._ui.topic_combo.blockSignals(False)
 
         if prev_topic and prev_topic in topics:
-            self._topic_combo.setCurrentText(prev_topic)
+            self._ui.topic_combo.setCurrentText(prev_topic)
         elif topics:
-            self._topic_combo.setCurrentIndex(0)
-        self._on_topic_changed(self._topic_combo.currentText())
+            self._ui.topic_combo.setCurrentIndex(0)
+        self._on_topic_changed(self._ui.topic_combo.currentText())
 
         return topics
 
@@ -193,35 +99,35 @@ class TemplatesTab(QWidget):
         if not topic:
             return
         langs = template_manager.list_languages(topic, TEMPLATES_DIR)
-        prev_lang = self._lang_combo.currentText()
-        self._lang_combo.blockSignals(True)
-        self._lang_combo.clear()
-        self._lang_combo.addItems(langs)
-        self._lang_combo.blockSignals(False)
+        prev_lang = self._ui.lang_combo.currentText()
+        self._ui.lang_combo.blockSignals(True)
+        self._ui.lang_combo.clear()
+        self._ui.lang_combo.addItems(langs)
+        self._ui.lang_combo.blockSignals(False)
         if prev_lang and prev_lang in langs:
-            self._lang_combo.setCurrentText(prev_lang)
+            self._ui.lang_combo.setCurrentText(prev_lang)
         elif langs:
-            self._lang_combo.setCurrentIndex(0)
-        self._on_template_selection_changed(self._lang_combo.currentText())
+            self._ui.lang_combo.setCurrentIndex(0)
+        self._on_template_selection_changed(self._ui.lang_combo.currentText())
 
     def _on_template_selection_changed(self, lang: str) -> None:
         """Load the selected topic/language template into the editor."""
-        topic = self._topic_combo.currentText()
+        topic = self._ui.topic_combo.currentText()
         if not topic or not lang:
             return
         self._loading_template = True
         try:
             tpl = template_manager.load_template(topic, lang, TEMPLATES_DIR)
         except FileNotFoundError:
-            self._subject_edit.clear()
-            self._body_edit.clear()
-            self._save_status_label.clear()
+            self._ui.subject_edit.clear()
+            self._ui.body_edit.clear()
+            self._ui.save_status_label.clear()
             self._loading_template = False
             return
-        self._subject_edit.setText(tpl["subject"])
-        self._body_edit.setPlainText(tpl["body"])
-        self._save_status_label.setText("Gespeichert")
-        self._save_status_label.setStyleSheet("color: gray;")
+        self._ui.subject_edit.setText(tpl["subject"])
+        self._ui.body_edit.setPlainText(tpl["body"])
+        self._ui.save_status_label.setText("Gespeichert")
+        self._ui.save_status_label.setStyleSheet("color: gray;")
         self._loading_template = False
 
     def _on_template_edited(self) -> None:
@@ -229,32 +135,32 @@ class TemplatesTab(QWidget):
         self._update_placeholder_label()
         if self._loading_template:
             return
-        self._save_status_label.setText("Ungespeicherte Aenderungen...")
-        self._save_status_label.setStyleSheet("color: orange;")
+        self._ui.save_status_label.setText("Ungespeicherte Aenderungen...")
+        self._ui.save_status_label.setStyleSheet("color: orange;")
         self._save_timer.start()
 
     def _auto_save_template(self) -> None:
         """Save the current template to disk (called by debounce timer)."""
-        topic = self._topic_combo.currentText()
-        lang = self._lang_combo.currentText()
+        topic = self._ui.topic_combo.currentText()
+        lang = self._ui.lang_combo.currentText()
         if not topic or not lang:
             return
         template_manager.save_template(
             topic,
             lang,
-            self._subject_edit.text(),
-            self._body_edit.toPlainText(),
+            self._ui.subject_edit.text(),
+            self._ui.body_edit.toPlainText(),
             TEMPLATES_DIR,
         )
-        self._save_status_label.setText("Gespeichert")
-        self._save_status_label.setStyleSheet("color: gray;")
+        self._ui.save_status_label.setText("Gespeichert")
+        self._ui.save_status_label.setStyleSheet("color: gray;")
 
     def _on_preview_template(self) -> None:
         """Show the current template body rendered as HTML."""
-        body = self._body_edit.toPlainText()
+        body = self._ui.body_edit.toPlainText()
         if not body.strip():
             return
-        topic = self._topic_combo.currentText()
+        topic = self._ui.topic_combo.currentText()
         html = template_manager.render_html(
             body, topic=topic, templates_dir=TEMPLATES_DIR, **self.font_kwargs()
         )
@@ -262,7 +168,7 @@ class TemplatesTab(QWidget):
         dlg.setWindowTitle("Vorlagenvorschau")
         dlg.resize(500, 400)
         dlg_layout = QVBoxLayout(dlg)
-        subject = self._subject_edit.text()
+        subject = self._ui.subject_edit.text()
         if subject:
             dlg_layout.addWidget(QLabel(f"<b>Betreff:</b> {subject}"))
         view = QTextEdit()
@@ -276,7 +182,7 @@ class TemplatesTab(QWidget):
 
     def _insert_format(self, prefix: str, suffix: str, placeholder: str) -> None:
         """Wrap the selected text (or insert placeholder) with markdown formatting."""
-        cursor = self._body_edit.textCursor()
+        cursor = self._ui.body_edit.textCursor()
         selected = cursor.selectedText()
         if selected:
             cursor.insertText(f"{prefix}{selected}{suffix}")
@@ -288,12 +194,12 @@ class TemplatesTab(QWidget):
             cursor.movePosition(
                 cursor.MoveOperation.Left, cursor.MoveMode.KeepAnchor, len(placeholder)
             )
-            self._body_edit.setTextCursor(cursor)
-        self._body_edit.setFocus()
+            self._ui.body_edit.setTextCursor(cursor)
+        self._ui.body_edit.setFocus()
 
     def _insert_link(self) -> None:
         """Prompt for link text and URL, then insert a markdown link."""
-        cursor = self._body_edit.textCursor()
+        cursor = self._ui.body_edit.textCursor()
         selected = cursor.selectedText()
 
         dlg = QDialog(self)
@@ -326,11 +232,11 @@ class TemplatesTab(QWidget):
             return
 
         cursor.insertText(f"[{link_text}]({url})")
-        self._body_edit.setFocus()
+        self._ui.body_edit.setFocus()
 
     def _insert_image(self) -> None:
         """Pick an image file, copy it to the topic's images folder, and insert a reference."""
-        topic = self._topic_combo.currentText()
+        topic = self._ui.topic_combo.currentText()
         if not topic:
             QMessageBox.information(self, "Bild", "Bitte zuerst ein Thema auswaehlen.")
             return
@@ -365,9 +271,9 @@ class TemplatesTab(QWidget):
         )
         desc = desc.strip() if ok and desc.strip() else src.stem
 
-        cursor = self._body_edit.textCursor()
+        cursor = self._ui.body_edit.textCursor()
         cursor.insertText(f"![{desc}](image:{src.name})")
-        self._body_edit.setFocus()
+        self._ui.body_edit.setFocus()
 
     def _on_new_topic(self) -> None:
         """Prompt for a new topic name."""
@@ -380,11 +286,11 @@ class TemplatesTab(QWidget):
             first_lang = langs[0] if langs else "en"
             template_manager.save_template(name, first_lang, "", "", TEMPLATES_DIR)
             self.templates_changed.emit()
-            self._topic_combo.setCurrentText(name)
+            self._ui.topic_combo.setCurrentText(name)
 
     def _on_new_language(self) -> None:
         """Prompt for a new language code within the current topic."""
-        topic = self._topic_combo.currentText()
+        topic = self._ui.topic_combo.currentText()
         if not topic:
             return
         code, ok = QInputDialog.getText(
@@ -394,16 +300,16 @@ class TemplatesTab(QWidget):
             code = code.strip().lower()
             template_manager.save_template(topic, code, "", "", TEMPLATES_DIR)
             self.templates_changed.emit()
-            self._topic_combo.setCurrentText(topic)
-            self._lang_combo.setCurrentText(code)
+            self._ui.topic_combo.setCurrentText(topic)
+            self._ui.lang_combo.setCurrentText(code)
 
     def _update_placeholder_label(self) -> None:
         """Show placeholders found in the current subject + body."""
-        text = self._subject_edit.text() + "\n" + self._body_edit.toPlainText()
+        text = self._ui.subject_edit.text() + "\n" + self._ui.body_edit.toPlainText()
         names = template_manager.extract_placeholders(text)
         if names:
-            self._placeholder_label.setText(
+            self._ui.placeholder_label.setText(
                 "Platzhalter: " + ", ".join(f"{{{n}}}" for n in names)
             )
         else:
-            self._placeholder_label.setText("Keine Platzhalter gefunden.")
+            self._ui.placeholder_label.setText("Keine Platzhalter gefunden.")

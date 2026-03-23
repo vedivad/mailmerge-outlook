@@ -6,21 +6,15 @@ from datetime import datetime
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
-    QComboBox,
     QDialog,
-    QHBoxLayout,
-    QLabel,
     QMessageBox,
-    QProgressBar,
     QPushButton,
-    QSizePolicy,
-    QTextEdit,
-    QVBoxLayout,
     QWidget,
 )
 
 from app import contact_manager, mailer, template_manager
 from app.config import TEMPLATES_DIR
+from app.tabs import send_ui
 from app.widgets import ContactPickerDialog
 
 
@@ -38,100 +32,39 @@ class SendTab(QWidget):
         self._get_font_kwargs = get_font_kwargs
         self._send_state: dict = {}
 
-        layout = QVBoxLayout(self)
+        # Build UI
+        self._ui = send_ui.build(self)
 
-        # Outlook availability notice
-        if not mailer.OUTLOOK_AVAILABLE:
-            notice = QLabel(
-                "\u26a0 Outlook ist auf dieser Plattform nicht verfuegbar. "
-                "Nur der Testlauf-Modus ist funktionsfaehig."
-            )
-            notice.setStyleSheet(
-                "color: #b45309; background: #fef3c7; padding: 6px; border-radius: 4px;"
-            )
-            notice.setWordWrap(True)
-            layout.addWidget(notice)
-
-        # Topic selector row
-        topic_layout = QHBoxLayout()
-        topic_layout.addWidget(QLabel("Thema:"))
-        self._send_topic_combo = QComboBox()
-        topic_layout.addWidget(self._send_topic_combo)
-        topic_layout.addStretch()
-        layout.addLayout(topic_layout)
-
-        # Controls row
-        ctrl_layout = QHBoxLayout()
-
-        btn_dry_run = QPushButton("Testlauf")
-        btn_dry_run.clicked.connect(lambda: self._on_action("dry_run"))
-        ctrl_layout.addWidget(btn_dry_run)
-
-        btn_draft = QPushButton("Entwurf")
-        btn_draft.clicked.connect(lambda: self._on_action("draft"))
-        btn_draft.setEnabled(mailer.OUTLOOK_AVAILABLE)
-        if not mailer.OUTLOOK_AVAILABLE:
-            btn_draft.setToolTip("Outlook nicht verfuegbar")
-        ctrl_layout.addWidget(btn_draft)
-
-        btn_send = QPushButton("Senden")
-        btn_send.clicked.connect(lambda: self._on_action("send"))
-        btn_send.setEnabled(mailer.OUTLOOK_AVAILABLE)
-        if not mailer.OUTLOOK_AVAILABLE:
-            btn_send.setToolTip("Outlook nicht verfuegbar")
-        ctrl_layout.addWidget(btn_send)
-
-        ctrl_layout.addStretch()
-
-        btn_preview = QPushButton("Vorschau (Outlook)")
-        btn_preview.clicked.connect(self._on_preview)
-        btn_preview.setEnabled(mailer.OUTLOOK_AVAILABLE)
-        if not mailer.OUTLOOK_AVAILABLE:
-            btn_preview.setToolTip("Outlook nicht verfuegbar")
-        ctrl_layout.addWidget(btn_preview)
-        layout.addLayout(ctrl_layout)
-
-        # Progress bar
-        self._progress = QProgressBar()
-        self._progress.setValue(0)
-        layout.addWidget(self._progress)
-
-        # Log panel
-        self._log = QTextEdit()
-        self._log.setReadOnly(True)
-        self._log.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-        layout.addWidget(self._log)
-
-        # Summary
-        self._summary_label = QLabel()
-        layout.addWidget(self._summary_label)
+        # Wire signals
+        self._ui.btn_dry_run.clicked.connect(lambda: self._on_action("dry_run"))
+        self._ui.btn_draft.clicked.connect(lambda: self._on_action("draft"))
+        self._ui.btn_send.clicked.connect(lambda: self._on_action("send"))
+        self._ui.btn_preview.clicked.connect(self._on_preview)
 
     # -- Public API --
 
     def refresh_topics(self, topics: list[str]) -> None:
         """Update the topic combo with a new list of topics."""
-        prev = self._send_topic_combo.currentText()
-        self._send_topic_combo.blockSignals(True)
-        self._send_topic_combo.clear()
-        self._send_topic_combo.addItems(topics)
-        self._send_topic_combo.blockSignals(False)
+        prev = self._ui.topic_combo.currentText()
+        self._ui.topic_combo.blockSignals(True)
+        self._ui.topic_combo.clear()
+        self._ui.topic_combo.addItems(topics)
+        self._ui.topic_combo.blockSignals(False)
         if prev and prev in topics:
-            self._send_topic_combo.setCurrentText(prev)
+            self._ui.topic_combo.setCurrentText(prev)
         elif topics:
-            self._send_topic_combo.setCurrentIndex(0)
+            self._ui.topic_combo.setCurrentIndex(0)
 
     # -- Internal helpers --
 
     def _send_topic(self) -> str:
         """Return the topic selected in the Send tab."""
-        return self._send_topic_combo.currentText()
+        return self._ui.topic_combo.currentText()
 
     def _log_msg(self, message: str) -> None:
         """Append a timestamped message to the send log."""
         ts = datetime.now().strftime("%H:%M:%S")
-        self._log.append(f"[{ts}] {message}")
+        self._ui.log.append(f"[{ts}] {message}")
 
     def _set_send_buttons_enabled(self, enabled: bool) -> None:
         """Enable or disable all action buttons during a send loop."""
@@ -295,10 +228,10 @@ class SendTab(QWidget):
                 return
 
         total = len(rows)
-        self._progress.setMaximum(total)
-        self._progress.setValue(0)
-        self._log.clear()
-        self._summary_label.clear()
+        self._ui.progress.setMaximum(total)
+        self._ui.progress.setValue(0)
+        self._ui.log.clear()
+        self._ui.summary_label.clear()
 
         self._send_state = {
             "rows": rows,
@@ -337,7 +270,7 @@ class SendTab(QWidget):
                 f"UEBERSPRUNGEN {email} — keine '{topic}'-Vorlage fuer '{lang}'"
             )
             s["skipped"] += 1
-            self._progress.setValue(i + 1)
+            self._ui.progress.setValue(i + 1)
             s["index"] += 1
             QTimer.singleShot(0, self._send_step)
             return
@@ -348,7 +281,7 @@ class SendTab(QWidget):
         except KeyError as exc:
             self._log_msg(f"UEBERSPRUNGEN {email} — fehlender Platzhalter {exc}")
             s["skipped"] += 1
-            self._progress.setValue(i + 1)
+            self._ui.progress.setValue(i + 1)
             s["index"] += 1
             QTimer.singleShot(0, self._send_step)
             return
@@ -388,7 +321,7 @@ class SendTab(QWidget):
                 self._log_msg(f"FEHLER {email} — {exc}")
                 s["errors"] += 1
 
-        self._progress.setValue(i + 1)
+        self._ui.progress.setValue(i + 1)
         s["index"] += 1
 
         delay_ms = 0 if s["dry_run"] else 1500
@@ -402,7 +335,7 @@ class SendTab(QWidget):
             mode
         ]
         action_label = "gespeichert" if mode == "draft" else "gesendet"
-        self._summary_label.setText(
+        self._ui.summary_label.setText(
             f"Fertig ({mode_label}): {s['sent']} {action_label},"
             f" {s['skipped']} uebersprungen, {s['errors']} Fehler"
         )
