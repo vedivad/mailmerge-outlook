@@ -30,43 +30,17 @@ except ImportError:
     OUTLOOK_AVAILABLE = False
 
 
-def send_email(
+def _prepare_mail(
     to: str,
     subject: str,
     html_body: str,
     outlook_app: object | None = None,
     image_paths: list | None = None,
-    draft: bool = False,
-) -> None:
-    """Send (or draft) an HTML email through Outlook, preserving the default signature.
+) -> tuple:
+    """Build an Outlook MailItem with signature and embedded images.
 
-    Uses the ``GetInspector`` trick to let Outlook natively populate the
-    user's default signature (with images, fonts, and layout intact), then
-    injects the template content before the signature.
-
-    Parameters
-    ----------
-    to:
-        Recipient email address.
-    subject:
-        Email subject line.
-    html_body:
-        Email body as HTML.  Should already be wrapped in a ``<div>`` with
-        inline font styles (as produced by ``template_manager.render_html``).
-        Images should use ``cid:filename`` references.
-    outlook_app:
-        An existing ``win32com.client.Dispatch('Outlook.Application')``
-        instance.  If *None*, a new one is created.
-    image_paths:
-        List of ``pathlib.Path`` objects for template images to embed.
-        Each image is attached with a Content-ID matching its filename.
-    draft:
-        If *True*, save the email to the Drafts folder instead of sending it.
-
-    Raises
-    ------
-    RuntimeError
-        If Outlook / pywin32 is not available on this platform.
+    Returns ``(outlook_app, mail)`` so the caller can decide what to do
+    with the item (send, save to drafts, or display).
     """
     if not OUTLOOK_AVAILABLE:
         raise RuntimeError(
@@ -125,6 +99,49 @@ def send_email(
         )
         _debug(f"Attached {img_path.name} OK")
 
+    return outlook_app, mail
+
+
+def send_email(
+    to: str,
+    subject: str,
+    html_body: str,
+    outlook_app: object | None = None,
+    image_paths: list | None = None,
+    draft: bool = False,
+) -> None:
+    """Send (or draft) an HTML email through Outlook, preserving the default signature.
+
+    Uses the ``GetInspector`` trick to let Outlook natively populate the
+    user's default signature (with images, fonts, and layout intact), then
+    injects the template content before the signature.
+
+    Parameters
+    ----------
+    to:
+        Recipient email address.
+    subject:
+        Email subject line.
+    html_body:
+        Email body as HTML.  Should already be wrapped in a ``<div>`` with
+        inline font styles (as produced by ``template_manager.render_html``).
+        Images should use ``cid:filename`` references.
+    outlook_app:
+        An existing ``win32com.client.Dispatch('Outlook.Application')``
+        instance.  If *None*, a new one is created.
+    image_paths:
+        List of ``pathlib.Path`` objects for template images to embed.
+        Each image is attached with a Content-ID matching its filename.
+    draft:
+        If *True*, save the email to the Drafts folder instead of sending it.
+
+    Raises
+    ------
+    RuntimeError
+        If Outlook / pywin32 is not available on this platform.
+    """
+    outlook_app, mail = _prepare_mail(to, subject, html_body, outlook_app, image_paths)
+
     if draft:
         _debug("Saving to Drafts")
         mail.Save()
@@ -133,6 +150,30 @@ def send_email(
         _debug("Calling Send")
         mail.Send()
         _debug("Send OK")
+
+
+def display_email(
+    to: str,
+    subject: str,
+    html_body: str,
+    outlook_app: object | None = None,
+    image_paths: list | None = None,
+) -> None:
+    """Open an email in an Outlook compose window for visual inspection.
+
+    The email is fully rendered with the default signature, fonts, and
+    images — exactly as it would appear if sent. The user can close the
+    window without sending.
+
+    Raises
+    ------
+    RuntimeError
+        If Outlook / pywin32 is not available on this platform.
+    """
+    _outlook_app, mail = _prepare_mail(to, subject, html_body, outlook_app, image_paths)
+    _debug("Displaying email")
+    mail.Display()
+    _debug("Display OK")
 
 
 def dry_run_email(to: str, subject: str, body: str) -> str:

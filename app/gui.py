@@ -922,6 +922,7 @@ class MainWindow(QMainWindow):
 
         self._mode_combo = QComboBox()
         self._mode_combo.addItem("Testlauf", "dry_run")
+        self._mode_combo.addItem("Vorschau (Outlook)", "display")
         self._mode_combo.addItem("Entwurf", "draft")
         self._mode_combo.addItem("Senden", "send")
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
@@ -967,7 +968,7 @@ class MainWindow(QMainWindow):
     def _on_mode_changed(self, _index: int) -> None:
         """Enable or disable send button based on mode and Outlook availability."""
         mode = self._mode_combo.currentData()
-        needs_outlook = mode in ("draft", "send")
+        needs_outlook = mode in ("display", "draft", "send")
         enabled = not needs_outlook or mailer.OUTLOOK_AVAILABLE
         self._btn_send_sel.setEnabled(enabled)
         if not enabled:
@@ -1152,11 +1153,25 @@ class MainWindow(QMainWindow):
                 images_dir / fn for fn in image_filenames if (images_dir / fn).exists()
             ]
 
-            # Send, draft, or dry-run
+            # Execute according to selected mode
             if dry_run:
                 result = mailer.dry_run_email(email, subject, body)
                 self._log_msg(f"TESTLAUF {email}\n{result}")
                 sent += 1
+            elif mode == "display":
+                try:
+                    mailer.display_email(
+                        email,
+                        subject,
+                        html_body,
+                        outlook_app=outlook_app,
+                        image_paths=image_paths,
+                    )
+                    self._log_msg(f"VORSCHAU {email}")
+                    sent += 1
+                except Exception as exc:
+                    self._log_msg(f"FEHLER {email} — {exc}")
+                    errors += 1
             else:
                 try:
                     mailer.send_email(
@@ -1177,10 +1192,18 @@ class MainWindow(QMainWindow):
             self._progress.setValue(i + 1)
             QApplication.processEvents()
 
-        mode_label = {"dry_run": "Testlauf", "draft": "Entwurf", "send": "Versand"}[
-            mode
-        ]
-        action_label = "gespeichert" if mode == "draft" else "gesendet"
+        mode_label = {
+            "dry_run": "Testlauf",
+            "display": "Vorschau",
+            "draft": "Entwurf",
+            "send": "Versand",
+        }[mode]
+        action_label = {
+            "dry_run": "gesendet",
+            "display": "angezeigt",
+            "draft": "gespeichert",
+            "send": "gesendet",
+        }[mode]
         self._summary_label.setText(
             f"Fertig ({mode_label}): {sent} {action_label},"
             f" {skipped} uebersprungen, {errors} Fehler"
