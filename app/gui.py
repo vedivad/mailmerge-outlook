@@ -9,7 +9,6 @@ from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -921,10 +920,12 @@ class MainWindow(QMainWindow):
         # Controls row
         ctrl_layout = QHBoxLayout()
 
-        self._dry_run_cb = QCheckBox("Testlauf")
-        self._dry_run_cb.setChecked(True)
-        self._dry_run_cb.toggled.connect(self._on_dry_run_toggled)
-        ctrl_layout.addWidget(self._dry_run_cb)
+        self._mode_combo = QComboBox()
+        self._mode_combo.addItem("Testlauf", "dry_run")
+        self._mode_combo.addItem("Entwurf", "draft")
+        self._mode_combo.addItem("Senden", "send")
+        self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        ctrl_layout.addWidget(self._mode_combo)
 
         btn_preview = QPushButton("Vorschau")
         btn_preview.clicked.connect(self._on_preview)
@@ -937,8 +938,8 @@ class MainWindow(QMainWindow):
         ctrl_layout.addStretch()
         layout.addLayout(ctrl_layout)
 
-        # Update send button state based on Outlook availability and dry-run
-        self._on_dry_run_toggled(self._dry_run_cb.isChecked())
+        # Update send button state based on Outlook availability and mode
+        self._on_mode_changed(self._mode_combo.currentIndex())
 
         # Progress bar
         self._progress = QProgressBar()
@@ -963,9 +964,11 @@ class MainWindow(QMainWindow):
         """Return the topic selected in the Send tab."""
         return self._send_topic_combo.currentText()
 
-    def _on_dry_run_toggled(self, checked: bool) -> None:
-        """Enable or disable send buttons based on dry-run state and Outlook availability."""
-        enabled = checked or mailer.OUTLOOK_AVAILABLE
+    def _on_mode_changed(self, _index: int) -> None:
+        """Enable or disable send button based on mode and Outlook availability."""
+        mode = self._mode_combo.currentData()
+        needs_outlook = mode in ("draft", "send")
+        enabled = not needs_outlook or mailer.OUTLOOK_AVAILABLE
         self._btn_send_sel.setEnabled(enabled)
         if not enabled:
             self._btn_send_sel.setToolTip(
@@ -1062,7 +1065,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Senden", "Bitte zuerst ein Thema auswaehlen.")
             return
 
-        dry_run = self._dry_run_cb.isChecked()
+        mode = self._mode_combo.currentData()  # "dry_run", "draft", or "send"
+        dry_run = mode == "dry_run"
 
         # Validate first
         languages = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
@@ -1148,7 +1152,7 @@ class MainWindow(QMainWindow):
                 images_dir / fn for fn in image_filenames if (images_dir / fn).exists()
             ]
 
-            # Send or dry-run
+            # Send, draft, or dry-run
             if dry_run:
                 result = mailer.dry_run_email(email, subject, body)
                 self._log_msg(f"TESTLAUF {email}\n{result}")
@@ -1161,8 +1165,10 @@ class MainWindow(QMainWindow):
                         html_body,
                         outlook_app=outlook_app,
                         image_paths=image_paths,
+                        draft=(mode == "draft"),
                     )
-                    self._log_msg(f"GESENDET {email}")
+                    label = "ENTWURF" if mode == "draft" else "GESENDET"
+                    self._log_msg(f"{label} {email}")
                     sent += 1
                 except Exception as exc:
                     self._log_msg(f"FEHLER {email} — {exc}")
@@ -1171,7 +1177,11 @@ class MainWindow(QMainWindow):
             self._progress.setValue(i + 1)
             QApplication.processEvents()
 
-        mode = "Testlauf" if dry_run else "Versand"
+        mode_label = {"dry_run": "Testlauf", "draft": "Entwurf", "send": "Versand"}[
+            mode
+        ]
+        action_label = "gespeichert" if mode == "draft" else "gesendet"
         self._summary_label.setText(
-            f"Fertig ({mode}): {sent} gesendet, {skipped} uebersprungen, {errors} Fehler"
+            f"Fertig ({mode_label}): {sent} {action_label},"
+            f" {skipped} uebersprungen, {errors} Fehler"
         )

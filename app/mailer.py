@@ -36,8 +36,9 @@ def send_email(
     html_body: str,
     outlook_app: object | None = None,
     image_paths: list | None = None,
+    draft: bool = False,
 ) -> None:
-    """Send an HTML email through Outlook, preserving the default signature.
+    """Send (or draft) an HTML email through Outlook, preserving the default signature.
 
     Uses the ``GetInspector`` trick to let Outlook natively populate the
     user's default signature (with images, fonts, and layout intact), then
@@ -59,6 +60,8 @@ def send_email(
     image_paths:
         List of ``pathlib.Path`` objects for template images to embed.
         Each image is attached with a Content-ID matching its filename.
+    draft:
+        If *True*, save the email to the Drafts folder instead of sending it.
 
     Raises
     ------
@@ -122,9 +125,14 @@ def send_email(
         )
         _debug(f"Attached {img_path.name} OK")
 
-    _debug("Calling Send")
-    mail.Send()
-    _debug("Send OK")
+    if draft:
+        _debug("Saving to Drafts")
+        mail.Save()
+        _debug("Draft saved OK")
+    else:
+        _debug("Calling Send")
+        mail.Send()
+        _debug("Send OK")
 
 
 def dry_run_email(to: str, subject: str, body: str) -> str:
