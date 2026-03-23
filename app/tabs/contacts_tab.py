@@ -1,0 +1,435 @@
+"""Contacts tab — CSV-backed contact management with language sub-tabs."""
+
+from pathlib import Path
+
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QAction, QColor
+from PyQt6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QTabWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app import contact_manager, template_manager
+from app.config import DEFAULT_CSV, PROJECT_DIR, TEMPLATES_DIR
+from app.widgets import ExcelTable
+
+
+class ContactsTab(QWidget):
+    """Widget for the Contacts tab with search, language sub-tabs, and CSV I/O."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._contacts_path: Path = DEFAULT_CSV
+        self._rows: list[dict[str, str]] = []
+        self._headers: list[str] = []
+        self._loading_contacts: bool = False
+        self._sort_state: dict[str, tuple[int, bool]] = {}
+
+        layout = QVBoxLayout(self)
+
+        # Top row: search + buttons
+        top_layout = QHBoxLayout()
+
+        self._contacts_search = QLineEdit()
+        self._contacts_search.setPlaceholderText("Kontakte filtern...")
+        self._contacts_search.setClearButtonEnabled(True)
+        self._contacts_search.textChanged.connect(self._on_contacts_filter_changed)
+        top_layout.addWidget(self._contacts_search)
+
+        btn_import = QPushButton("CSV importieren")
+        btn_export = QPushButton("CSV exportieren")
+        btn_import.clicked.connect(self._on_import_csv)
+        btn_export.clicked.connect(self._on_export_csv)
+        for btn in (btn_import, btn_export):
+            top_layout.addWidget(btn)
+
+        self._contacts_save_status = QLabel()
+        top_layout.addWidget(self._contacts_save_status)
+
+        layout.addLayout(top_layout)
+
+        # Language sub-tabs — one table per language
+        self._lang_tabs = QTabWidget()
+        self._lang_tables: dict[str, ExcelTable] = {}
+        layout.addWidget(self._lang_tabs)
+
+        # Auto-save timer (debounce 500ms)
+        self._save_timer = QTimer()
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(500)
+        self._save_timer.timeout.connect(self._auto_save_contacts)
+
+    def load_csv(self, path: Path) -> None:
+        """Load a CSV file into the contacts tables, split by language."""
+        try:
+            self._rows = contact_manager.load_csv(path)
+        except FileNotFoundError:
+            QMessageBox.warning(
+                self, "Datei nicht gefunden", f"Konnte {path} nicht finden"
+            )
+            return
+
+        self._contacts_path = path
+        if self._rows:
+            self._headers = [h for h in self._rows[0].keys() if h != "language"]
+        else:
+            self._headers = []
+
+        self._loading_contacts = True
+        self.rebuild_lang_tabs()
+        self._loading_contacts = False
+
+    def rebuild_lang_tabs(self) -> None:
+        """Rebuild the language sub-tabs from current data."""
+        self._lang_tabs.blockSignals(True)
+        self._lang_tabs.clear()
+        self._lang_tables.clear()
+
+        languages = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
+
+        rows_by_lang: dict[str, list[dict[str, str]]] = {lang: [] for lang in languages}
+        for row in self._rows:
+            lang = row.get("language", "")
+            if lang not in rows_by_lang:
+                rows_by_lang[lang] = []
+            rows_by_lang[lang].append(row)
+
+        for lang in languages:
+            table = self._make_table(lang)
+            self._populate_table(table, rows_by_lang.get(lang, []))
+            self._lang_tabs.addTab(table, lang)
+
+        other_rows = []
+        for lang, rows in rows_by_lang.items():
+            if lang not in languages:
+                other_rows.extend(rows)
+        if other_rows:
+            table = self._make_table("other")
+            self._populate_table(table, other_rows)
+            self._lang_tabs.addTab(table, "other")
+
+        self._lang_tabs.blockSignals(False)
+
+    def all_contacts(self) -> list[dict[str, str]]:
+        """Gather all contacts from all language tabs, with language added."""
+        rows: list[dict[str, str]] = []
+        for i in range(self._lang_tabs.count()):
+            lang = self._lang_tabs.tabText(i)
+            table = self._lang_tables[lang]
+            for r in range(self._data_row_count(table)):
+                row = self._table_row_to_dict(table, r)
+                row["language"] = lang
+                rows.append(row)
+        return rows
+
+    # -- Internal helpers --
+
+    def _make_table(self, lang: str) -> ExcelTable:
+        """Create a new table widget for a language tab."""
+        table = ExcelTable()
+        table.cellChanged.connect(
+            lambda row, col, la=lang: self._on_cell_changed(la, row, col)
+        )
+        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table.customContextMenuRequested.connect(
+            lambda pos, t=table: self._on_table_context_menu(t, pos)
+        )
+        table.horizontalHeader().sectionClicked.connect(
+            lambda col, la=lang: self._on_sort_column(la, col)
+        )
+        header = table.horizontalHeader()
+        header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        header.customContextMenuRequested.connect(
+            lambda pos, t=table: self._on_header_context_menu(t, pos)
+        )
+        self._lang_tables[lang] = table
+        return table
+
+    def _populate_table(self, table: ExcelTable, rows: list[dict[str, str]]) -> None:
+        """Fill a table from a list of row dicts, plus an empty sentinel row."""
+        table.blockSignals(True)
+        table.setRowCount(len(rows) + 1)
+        table.setColumnCount(len(self._headers))
+        table.setHorizontalHeaderLabels(self._headers)
+
+        for r, row in enumerate(rows):
+            for c, header in enumerate(self._headers):
+                item = QTableWidgetItem(row.get(header, ""))
+                table.setItem(r, c, item)
+
+        self._init_sentinel_row(table, len(rows))
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.blockSignals(False)
+        self._validate_table(table)
+
+    def _init_sentinel_row(self, table: ExcelTable, row: int) -> None:
+        """Set up the empty sentinel row with greyed-out placeholder style."""
+        for c in range(len(self._headers)):
+            item = QTableWidgetItem("")
+            item.setForeground(QColor(180, 180, 180))
+            table.setItem(row, c, item)
+
+    def _data_row_count(self, table: ExcelTable) -> int:
+        """Return the number of data rows (excluding the sentinel row)."""
+        return max(0, table.rowCount() - 1)
+
+    def _lang_for_table(self, table: ExcelTable) -> str:
+        """Return the language code associated with a table widget."""
+        for lang, t in self._lang_tables.items():
+            if t is table:
+                return lang
+        return ""
+
+    def _table_row_to_dict(self, table: ExcelTable, row_index: int) -> dict[str, str]:
+        """Convert a table row to a dict keyed by column headers."""
+        result: dict[str, str] = {}
+        for c, header in enumerate(self._headers):
+            item = table.item(row_index, c)
+            result[header] = item.text() if item else ""
+        return result
+
+    def _validate_row_dict(self, row_dict: dict[str, str], lang: str) -> list[str]:
+        """Validate a contact row, injecting the language from the tab."""
+        row_with_lang = {**row_dict, "language": lang}
+        languages = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
+        return contact_manager.validate_row(row_with_lang, languages)
+
+    def _validate_table(self, table: ExcelTable) -> None:
+        """Highlight invalid rows in a contacts table (skip sentinel)."""
+        err_bg = QColor(255, 80, 80, 60)
+        lang = self._lang_for_table(table)
+
+        for r in range(self._data_row_count(table)):
+            row_dict = self._table_row_to_dict(table, r)
+            errors = self._validate_row_dict(row_dict, lang)
+            tooltip = "; ".join(errors) if errors else ""
+            for c in range(table.columnCount()):
+                item = table.item(r, c)
+                if item:
+                    if errors:
+                        item.setBackground(err_bg)
+                    else:
+                        item.setData(Qt.ItemDataRole.BackgroundRole, None)
+                    item.setToolTip(tooltip)
+
+    # -- Slots --
+
+    def _on_import_csv(self) -> None:
+        """Open a file dialog and import contacts from a CSV."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "CSV importieren", str(PROJECT_DIR), "CSV-Dateien (*.csv)"
+        )
+        if path:
+            self.load_csv(Path(path))
+            self._auto_save_contacts()
+
+    def _on_export_csv(self) -> None:
+        """Export all contacts to a user-chosen CSV file."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "CSV exportieren", str(PROJECT_DIR), "CSV-Dateien (*.csv)"
+        )
+        if path:
+            rows = self.all_contacts()
+            contact_manager.save_csv(Path(path), rows)
+
+    def _schedule_contacts_save(self) -> None:
+        """Mark contacts as unsaved and restart the debounce timer."""
+        if self._loading_contacts:
+            return
+        self._contacts_save_status.setText("Ungespeichert...")
+        self._contacts_save_status.setStyleSheet("color: orange;")
+        self._save_timer.start()
+
+    def _auto_save_contacts(self) -> None:
+        """Save all contacts to the default CSV (called by debounce timer)."""
+        rows = self.all_contacts()
+        contact_manager.save_csv(self._contacts_path, rows)
+        self._contacts_save_status.setText("Gespeichert")
+        self._contacts_save_status.setStyleSheet("color: gray;")
+
+    def _on_table_context_menu(self, table: ExcelTable, pos) -> None:
+        """Show a right-click context menu for the contacts table."""
+        row = table.rowAt(pos.y())
+        if row < 0 or row >= self._data_row_count(table):
+            return
+
+        menu = QMenu(table)
+        delete_action = QAction("Zeile loeschen", table)
+        delete_action.triggered.connect(lambda: self._delete_row(table, row))
+        menu.addAction(delete_action)
+        menu.exec(table.viewport().mapToGlobal(pos))
+
+    def _delete_row(self, table: ExcelTable, row: int) -> None:
+        """Delete a specific row from a contacts table."""
+        if 0 <= row < self._data_row_count(table):
+            table.removeRow(row)
+            self._validate_table(table)
+            self._schedule_contacts_save()
+
+    def _on_add_column(self) -> None:
+        """Add a new column (placeholder) to all language tables."""
+        name, ok = QInputDialog.getText(
+            self, "Spalte hinzufuegen", "Spaltenname (z.B. titel, abteilung):"
+        )
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if name in self._headers:
+            QMessageBox.information(
+                self, "Spalte hinzufuegen", f"Spalte '{name}' existiert bereits."
+            )
+            return
+        self._headers.append(name)
+        for table in self._lang_tables.values():
+            table.blockSignals(True)
+            col = table.columnCount()
+            table.setColumnCount(col + 1)
+            table.setHorizontalHeaderLabels(self._headers)
+            for r in range(table.rowCount()):
+                table.setItem(r, col, QTableWidgetItem(""))
+            table.blockSignals(False)
+        self._schedule_contacts_save()
+
+    def _on_header_context_menu(self, table: ExcelTable, pos) -> None:
+        """Show a context menu on the column header for add/remove column."""
+        header = table.horizontalHeader()
+        col = header.logicalIndexAt(pos)
+        menu = QMenu(self)
+
+        add_action = QAction("Spalte hinzufuegen", self)
+        add_action.triggered.connect(self._on_add_column)
+        menu.addAction(add_action)
+
+        if col >= 0:
+            col_name = self._headers[col] if col < len(self._headers) else ""
+            if col_name.lower() != "email":
+                remove_action = QAction(f"Spalte '{col_name}' entfernen", self)
+                remove_action.triggered.connect(lambda: self._remove_column(col))
+                menu.addAction(remove_action)
+
+        menu.exec(header.mapToGlobal(pos))
+
+    def _remove_column(self, col: int) -> None:
+        """Remove a column from all language tables and headers."""
+        if col < 0 or col >= len(self._headers):
+            return
+        col_name = self._headers[col]
+        reply = QMessageBox.question(
+            self,
+            "Spalte entfernen",
+            f"Spalte '{col_name}' wirklich aus allen Sprach-Tabs entfernen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._headers.pop(col)
+        for table in self._lang_tables.values():
+            table.blockSignals(True)
+            table.removeColumn(col)
+            table.setHorizontalHeaderLabels(self._headers)
+            table.blockSignals(False)
+        self._schedule_contacts_save()
+
+    def _on_cell_changed(self, lang: str, row: int, _col: int) -> None:
+        """Re-validate the edited row, promote sentinel if typed into, and auto-save."""
+        table = self._lang_tables.get(lang)
+        if table is None:
+            return
+
+        sentinel_row = table.rowCount() - 1
+        if row == sentinel_row:
+            row_dict = self._table_row_to_dict(table, row)
+            if any(v.strip() for v in row_dict.values()):
+                table.blockSignals(True)
+                for c in range(table.columnCount()):
+                    item = table.item(row, c)
+                    if item:
+                        item.setData(Qt.ItemDataRole.ForegroundRole, None)
+                new_sentinel = table.rowCount()
+                table.insertRow(new_sentinel)
+                self._init_sentinel_row(table, new_sentinel)
+                table.blockSignals(False)
+                col = table.currentColumn()
+                QTimer.singleShot(0, lambda: table.setCurrentCell(new_sentinel, col))
+
+        if row >= self._data_row_count(table):
+            return
+
+        row_dict = self._table_row_to_dict(table, row)
+        errors = self._validate_row_dict(row_dict, lang)
+        err_bg = QColor(255, 80, 80, 60)
+        tooltip = "; ".join(errors) if errors else ""
+        for c in range(table.columnCount()):
+            item = table.item(row, c)
+            if item:
+                if errors:
+                    item.setBackground(err_bg)
+                else:
+                    item.setData(Qt.ItemDataRole.BackgroundRole, None)
+                item.setToolTip(tooltip)
+        self._schedule_contacts_save()
+
+    def _on_sort_column(self, lang: str, col: int) -> None:
+        """Sort a language table by column, keeping the sentinel row pinned."""
+        table = self._lang_tables.get(lang)
+        if table is None:
+            return
+
+        prev_col, prev_asc = self._sort_state.get(lang, (None, True))
+        ascending = not prev_asc if prev_col == col else True
+        self._sort_state[lang] = (col, ascending)
+
+        data_count = self._data_row_count(table)
+        rows: list[list[str]] = []
+        for r in range(data_count):
+            row_data = [
+                (table.item(r, c).text() if table.item(r, c) else "")
+                for c in range(table.columnCount())
+            ]
+            rows.append(row_data)
+
+        rows.sort(key=lambda row: row[col].lower(), reverse=not ascending)
+
+        table.blockSignals(True)
+        for r, row_data in enumerate(rows):
+            for c, text in enumerate(row_data):
+                item = table.item(r, c)
+                if item:
+                    item.setText(text)
+                else:
+                    table.setItem(r, c, QTableWidgetItem(text))
+        table.blockSignals(False)
+
+        table.horizontalHeader().setSortIndicator(
+            col,
+            Qt.SortOrder.AscendingOrder if ascending else Qt.SortOrder.DescendingOrder,
+        )
+        table.horizontalHeader().setSortIndicatorShown(True)
+
+        self._validate_table(table)
+        self._schedule_contacts_save()
+
+    def _on_contacts_filter_changed(self, text: str) -> None:
+        """Show/hide rows across all language tables based on search text."""
+        text = text.lower()
+        for _lang, table in self._lang_tables.items():
+            data_count = self._data_row_count(table)
+            for r in range(data_count):
+                row_text = " ".join(
+                    (table.item(r, c).text() if table.item(r, c) else "")
+                    for c in range(table.columnCount())
+                ).lower()
+                table.setRowHidden(r, text not in row_text)
+            sentinel = table.rowCount() - 1
+            table.setRowHidden(sentinel, False)
