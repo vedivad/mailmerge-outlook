@@ -8,7 +8,6 @@ from pathlib import Path
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
-    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -920,27 +919,33 @@ class MainWindow(QMainWindow):
         # Controls row
         ctrl_layout = QHBoxLayout()
 
-        self._mode_combo = QComboBox()
-        self._mode_combo.addItem("Testlauf", "dry_run")
-        self._mode_combo.addItem("Vorschau (Outlook)", "display")
-        self._mode_combo.addItem("Entwurf", "draft")
-        self._mode_combo.addItem("Senden", "send")
-        self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        ctrl_layout.addWidget(self._mode_combo)
+        btn_dry_run = QPushButton("Testlauf")
+        btn_dry_run.clicked.connect(lambda: self._on_action("dry_run"))
+        ctrl_layout.addWidget(btn_dry_run)
 
-        btn_preview = QPushButton("Vorschau")
-        btn_preview.clicked.connect(self._on_preview)
-        ctrl_layout.addWidget(btn_preview)
+        btn_draft = QPushButton("Entwurf")
+        btn_draft.clicked.connect(lambda: self._on_action("draft"))
+        btn_draft.setEnabled(mailer.OUTLOOK_AVAILABLE)
+        if not mailer.OUTLOOK_AVAILABLE:
+            btn_draft.setToolTip("Outlook nicht verfuegbar")
+        ctrl_layout.addWidget(btn_draft)
 
-        self._btn_send_sel = QPushButton("Senden")
-        self._btn_send_sel.clicked.connect(self._on_send_selected)
-        ctrl_layout.addWidget(self._btn_send_sel)
+        btn_send = QPushButton("Senden")
+        btn_send.clicked.connect(lambda: self._on_action("send"))
+        btn_send.setEnabled(mailer.OUTLOOK_AVAILABLE)
+        if not mailer.OUTLOOK_AVAILABLE:
+            btn_send.setToolTip("Outlook nicht verfuegbar")
+        ctrl_layout.addWidget(btn_send)
 
         ctrl_layout.addStretch()
-        layout.addLayout(ctrl_layout)
 
-        # Update send button state based on Outlook availability and mode
-        self._on_mode_changed(self._mode_combo.currentIndex())
+        btn_preview = QPushButton("Vorschau (Outlook)")
+        btn_preview.clicked.connect(self._on_preview)
+        btn_preview.setEnabled(mailer.OUTLOOK_AVAILABLE)
+        if not mailer.OUTLOOK_AVAILABLE:
+            btn_preview.setToolTip("Outlook nicht verfuegbar")
+        ctrl_layout.addWidget(btn_preview)
+        layout.addLayout(ctrl_layout)
 
         # Progress bar
         self._progress = QProgressBar()
@@ -965,26 +970,13 @@ class MainWindow(QMainWindow):
         """Return the topic selected in the Send tab."""
         return self._send_topic_combo.currentText()
 
-    def _on_mode_changed(self, _index: int) -> None:
-        """Enable or disable send button based on mode and Outlook availability."""
-        mode = self._mode_combo.currentData()
-        needs_outlook = mode in ("display", "draft", "send")
-        enabled = not needs_outlook or mailer.OUTLOOK_AVAILABLE
-        self._btn_send_sel.setEnabled(enabled)
-        if not enabled:
-            self._btn_send_sel.setToolTip(
-                "Outlook nicht verfuegbar — Testlauf aktivieren zum Testen"
-            )
-        else:
-            self._btn_send_sel.setToolTip("")
-
     def _log_msg(self, message: str) -> None:
         """Append a timestamped message to the send log."""
         ts = datetime.now().strftime("%H:%M:%S")
         self._log.append(f"[{ts}] {message}")
 
     def _on_preview(self) -> None:
-        """Open a contact picker, then show a preview for the chosen contact."""
+        """Open a contact picker, then display the email in Outlook for inspection."""
         topic = self._send_topic()
         if not topic:
             QMessageBox.information(
@@ -1005,6 +997,7 @@ class MainWindow(QMainWindow):
             return
 
         row = selected[0]
+        email = row.get("email", "")
         lang = row.get("language", "")
 
         try:
@@ -1025,26 +1018,28 @@ class MainWindow(QMainWindow):
             return
 
         html_body = template_manager.render_html(
-            body, topic=topic, templates_dir=TEMPLATES_DIR, **self._font_kwargs()
+            body,
+            topic=topic,
+            templates_dir=TEMPLATES_DIR,
+            use_cid=True,
+            **self._font_kwargs(),
         )
 
-        preview = QDialog(self)
-        preview.setWindowTitle("E-Mail-Vorschau")
-        preview.resize(500, 400)
-        preview_layout = QVBoxLayout(preview)
-        preview_layout.addWidget(QLabel(f"<b>An:</b> {row.get('email', '')}"))
-        preview_layout.addWidget(QLabel(f"<b>Betreff:</b> {subject}"))
-        body_view = QTextEdit()
-        body_view.setReadOnly(True)
-        body_view.setHtml(html_body)
-        preview_layout.addWidget(body_view)
-        btn_close = QPushButton("Schliessen")
-        btn_close.clicked.connect(preview.accept)
-        preview_layout.addWidget(btn_close)
-        preview.exec()
+        # Collect image paths for embedding
+        images_dir = TEMPLATES_DIR / topic / "images"
+        image_filenames = re.findall(r'src="cid:([^"]+)"', html_body)
+        image_paths = [
+            images_dir / fn for fn in image_filenames if (images_dir / fn).exists()
+        ]
 
-    def _on_send_selected(self) -> None:
-        """Open a contact picker and send to the chosen contacts."""
+        try:
+            mailer.display_email(email, subject, html_body, image_paths=image_paths)
+            self._log_msg(f"VORSCHAU {email}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Vorschau", f"Outlook-Fehler:\n{exc}")
+
+    def _on_action(self, mode: str) -> None:
+        """Open a contact picker and execute the chosen mode (dry_run/draft/send)."""
         contacts = self._all_contacts()
         if not contacts:
             QMessageBox.information(self, "Senden", "Keine Kontakte geladen.")
@@ -1057,16 +1052,45 @@ class MainWindow(QMainWindow):
         if not selected:
             QMessageBox.information(self, "Senden", "Keine Kontakte ausgewaehlt.")
             return
-        self._send_emails(selected)
 
-    def _send_emails(self, rows: list[dict[str, str]]) -> None:
-        """Execute the send loop for *rows* using the topic selected in the Send tab."""
+        count = len(selected)
+        if mode == "draft":
+            answer = QMessageBox.question(
+                self,
+                "Entwurf erstellen",
+                f"{count} E-Mail(s) werden als Entwurf in Outlook gespeichert.\n\n"
+                "Fortfahren?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        elif mode == "send":
+            answer = QMessageBox.warning(
+                self,
+                "E-Mails senden",
+                f"{count} E-Mail(s) werden jetzt ueber Outlook versendet.\n\n"
+                "Dieser Vorgang kann nicht rueckgaengig gemacht werden.\n\n"
+                "Fortfahren?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        self._send_emails(selected, mode)
+
+    def _send_emails(self, rows: list[dict[str, str]], mode: str = "dry_run") -> None:
+        """Execute the send loop for *rows* using the topic selected in the Send tab.
+
+        COM calls (draft/send) are spaced 1.5 s apart via a QTimer to prevent
+        Outlook from freezing.  Dry-run mode runs without delay.
+        """
         topic = self._send_topic()
         if not topic:
             QMessageBox.warning(self, "Senden", "Bitte zuerst ein Thema auswaehlen.")
             return
 
-        mode = self._mode_combo.currentData()  # "dry_run", "draft", or "send"
         dry_run = mode == "dry_run"
 
         # Validate first
@@ -1101,110 +1125,133 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-        sent = 0
-        skipped = 0
-        errors = 0
         total = len(rows)
-
         self._progress.setMaximum(total)
         self._progress.setValue(0)
         self._log.clear()
         self._summary_label.clear()
 
-        for i, row in enumerate(rows):
-            email = row.get("email", "")
-            lang = row.get("language", "")
+        # Store send-loop state so the timer callback can advance through rows
+        self._send_state = {
+            "rows": rows,
+            "mode": mode,
+            "dry_run": dry_run,
+            "topic": topic,
+            "outlook_app": outlook_app,
+            "index": 0,
+            "sent": 0,
+            "skipped": 0,
+            "errors": 0,
+        }
+        self._set_send_buttons_enabled(False)
+        self._send_step()
 
-            # Load template for this topic + language
-            try:
-                tpl = template_manager.load_template(topic, lang, TEMPLATES_DIR)
-            except FileNotFoundError:
-                self._log_msg(
-                    f"UEBERSPRUNGEN {email} — keine '{topic}'-Vorlage fuer '{lang}'"
-                )
-                skipped += 1
-                self._progress.setValue(i + 1)
-                QApplication.processEvents()
-                continue
+    def _set_send_buttons_enabled(self, enabled: bool) -> None:
+        """Enable or disable all action buttons during a send loop."""
+        for btn in self.findChildren(QPushButton):
+            text = btn.text()
+            if text in ("Testlauf", "Entwurf", "Senden", "Vorschau (Outlook)"):
+                if enabled and text != "Testlauf" and not mailer.OUTLOOK_AVAILABLE:
+                    btn.setEnabled(False)
+                else:
+                    btn.setEnabled(enabled)
 
-            # Resolve placeholders
-            try:
-                subject = tpl["subject"].format(**row)
-                body = tpl["body"].format(**row)
-            except KeyError as exc:
-                self._log_msg(f"UEBERSPRUNGEN {email} — fehlender Platzhalter {exc}")
-                skipped += 1
-                self._progress.setValue(i + 1)
-                QApplication.processEvents()
-                continue
+    def _send_step(self) -> None:
+        """Process one row of the send loop, then schedule the next via QTimer."""
+        s = self._send_state
+        rows = s["rows"]
 
-            html_body = template_manager.render_html(
-                body,
-                topic=topic,
-                templates_dir=TEMPLATES_DIR,
-                use_cid=True,
-                **self._font_kwargs(),
+        if s["index"] >= len(rows):
+            self._send_finish()
+            return
+
+        i = s["index"]
+        row = rows[i]
+        email = row.get("email", "")
+        lang = row.get("language", "")
+        topic = s["topic"]
+        mode = s["mode"]
+
+        # Load template for this topic + language
+        try:
+            tpl = template_manager.load_template(topic, lang, TEMPLATES_DIR)
+        except FileNotFoundError:
+            self._log_msg(
+                f"UEBERSPRUNGEN {email} — keine '{topic}'-Vorlage fuer '{lang}'"
             )
-
-            # Collect image paths for embedding
-            images_dir = TEMPLATES_DIR / topic / "images"
-            image_filenames = re.findall(r'src="cid:([^"]+)"', html_body)
-            image_paths = [
-                images_dir / fn for fn in image_filenames if (images_dir / fn).exists()
-            ]
-
-            # Execute according to selected mode
-            if dry_run:
-                result = mailer.dry_run_email(email, subject, body)
-                self._log_msg(f"TESTLAUF {email}\n{result}")
-                sent += 1
-            elif mode == "display":
-                try:
-                    mailer.display_email(
-                        email,
-                        subject,
-                        html_body,
-                        outlook_app=outlook_app,
-                        image_paths=image_paths,
-                    )
-                    self._log_msg(f"VORSCHAU {email}")
-                    sent += 1
-                except Exception as exc:
-                    self._log_msg(f"FEHLER {email} — {exc}")
-                    errors += 1
-            else:
-                try:
-                    mailer.send_email(
-                        email,
-                        subject,
-                        html_body,
-                        outlook_app=outlook_app,
-                        image_paths=image_paths,
-                        draft=(mode == "draft"),
-                    )
-                    label = "ENTWURF" if mode == "draft" else "GESENDET"
-                    self._log_msg(f"{label} {email}")
-                    sent += 1
-                except Exception as exc:
-                    self._log_msg(f"FEHLER {email} — {exc}")
-                    errors += 1
-
+            s["skipped"] += 1
             self._progress.setValue(i + 1)
-            QApplication.processEvents()
+            s["index"] += 1
+            QTimer.singleShot(0, self._send_step)
+            return
 
-        mode_label = {
-            "dry_run": "Testlauf",
-            "display": "Vorschau",
-            "draft": "Entwurf",
-            "send": "Versand",
-        }[mode]
-        action_label = {
-            "dry_run": "gesendet",
-            "display": "angezeigt",
-            "draft": "gespeichert",
-            "send": "gesendet",
-        }[mode]
-        self._summary_label.setText(
-            f"Fertig ({mode_label}): {sent} {action_label},"
-            f" {skipped} uebersprungen, {errors} Fehler"
+        # Resolve placeholders
+        try:
+            subject = tpl["subject"].format(**row)
+            body = tpl["body"].format(**row)
+        except KeyError as exc:
+            self._log_msg(f"UEBERSPRUNGEN {email} — fehlender Platzhalter {exc}")
+            s["skipped"] += 1
+            self._progress.setValue(i + 1)
+            s["index"] += 1
+            QTimer.singleShot(0, self._send_step)
+            return
+
+        html_body = template_manager.render_html(
+            body,
+            topic=topic,
+            templates_dir=TEMPLATES_DIR,
+            use_cid=True,
+            **self._font_kwargs(),
         )
+
+        # Collect image paths for embedding
+        images_dir = TEMPLATES_DIR / topic / "images"
+        image_filenames = re.findall(r'src="cid:([^"]+)"', html_body)
+        image_paths = [
+            images_dir / fn for fn in image_filenames if (images_dir / fn).exists()
+        ]
+
+        # Execute according to selected mode
+        if s["dry_run"]:
+            result = mailer.dry_run_email(email, subject, body)
+            self._log_msg(f"TESTLAUF {email}\n{result}")
+            s["sent"] += 1
+        else:
+            try:
+                mailer.send_email(
+                    email,
+                    subject,
+                    html_body,
+                    outlook_app=s["outlook_app"],
+                    image_paths=image_paths,
+                    draft=(mode == "draft"),
+                )
+                label = "ENTWURF" if mode == "draft" else "GESENDET"
+                self._log_msg(f"{label} {email}")
+                s["sent"] += 1
+            except Exception as exc:
+                self._log_msg(f"FEHLER {email} — {exc}")
+                s["errors"] += 1
+
+        self._progress.setValue(i + 1)
+        s["index"] += 1
+
+        # Schedule next: 1.5 s delay for COM calls, immediate for dry run
+        delay_ms = 0 if s["dry_run"] else 1500
+        QTimer.singleShot(delay_ms, self._send_step)
+
+    def _send_finish(self) -> None:
+        """Show the summary after the send loop completes."""
+        s = self._send_state
+        mode = s["mode"]
+        mode_label = {"dry_run": "Testlauf", "draft": "Entwurf", "send": "Versand"}[
+            mode
+        ]
+        action_label = "gespeichert" if mode == "draft" else "gesendet"
+        self._summary_label.setText(
+            f"Fertig ({mode_label}): {s['sent']} {action_label},"
+            f" {s['skipped']} uebersprungen, {s['errors']} Fehler"
+        )
+        self._set_send_buttons_enabled(True)
+        self._send_state = {}
