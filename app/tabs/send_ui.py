@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app import mailer
+from app import delivery
 
 
 @dataclass
@@ -34,16 +34,19 @@ class SendWidgets:
 def build(parent: QWidget) -> SendWidgets:
     """Build the Send tab layout on *parent* and return widget references."""
     layout = QVBoxLayout(parent)
+    caps = delivery.capabilities()
 
-    # Outlook availability notice
-    if not mailer.OUTLOOK_AVAILABLE:
+    # Provider availability notice
+    if not caps.available:
         notice = QLabel(
             "\u26a0 "
             + parent.tr(
-                "Outlook is not available on this platform. "
+                "Email delivery backend is unavailable. "
                 "Only dry-run mode is functional."
             )
         )
+        if caps.unavailable_reason:
+            notice.setText(notice.text() + "\n" + caps.unavailable_reason)
         notice.setStyleSheet(
             "color: #b45309; background: #fef3c7; padding: 6px; border-radius: 4px;"
         )
@@ -65,23 +68,27 @@ def build(parent: QWidget) -> SendWidgets:
     ctrl_layout.addWidget(btn_dry_run)
 
     btn_draft = QPushButton(parent.tr("Draft"))
-    btn_draft.setEnabled(mailer.OUTLOOK_AVAILABLE)
-    if not mailer.OUTLOOK_AVAILABLE:
-        btn_draft.setToolTip(parent.tr("Outlook not available"))
+    btn_draft.setEnabled(caps.available and caps.supports_draft)
+    if not caps.available:
+        btn_draft.setToolTip(caps.unavailable_reason)
+    elif not caps.supports_draft:
+        btn_draft.setToolTip(parent.tr("Draft mode is only available with Outlook"))
     ctrl_layout.addWidget(btn_draft)
 
     btn_send = QPushButton(parent.tr("Send"))
-    btn_send.setEnabled(mailer.OUTLOOK_AVAILABLE)
-    if not mailer.OUTLOOK_AVAILABLE:
-        btn_send.setToolTip(parent.tr("Outlook not available"))
+    btn_send.setEnabled(caps.available)
+    if not caps.available:
+        btn_send.setToolTip(caps.unavailable_reason)
     ctrl_layout.addWidget(btn_send)
 
     ctrl_layout.addStretch()
 
-    btn_preview = QPushButton(parent.tr("Preview (Outlook)"))
-    btn_preview.setEnabled(mailer.OUTLOOK_AVAILABLE)
-    if not mailer.OUTLOOK_AVAILABLE:
-        btn_preview.setToolTip(parent.tr("Outlook not available"))
+    btn_preview = QPushButton(parent.tr("Preview"))
+    btn_preview.setEnabled(caps.available and caps.supports_preview)
+    if not caps.available:
+        btn_preview.setToolTip(caps.unavailable_reason)
+    elif not caps.supports_preview:
+        btn_preview.setToolTip(parent.tr("Preview is only available with Outlook"))
     ctrl_layout.addWidget(btn_preview)
     layout.addLayout(ctrl_layout)
 

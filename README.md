@@ -53,6 +53,44 @@ lrelease translations/de.ts -qm translations/de.qm
 
 If `de.qm` is missing, the app falls back to source-language strings.
 
+## Delivery Providers
+
+The app supports multiple delivery backends:
+
+- `outlook` (default) — Outlook COM on Windows
+- `smtp` — standard SMTP server (cross-platform)
+
+Configure provider from the UI:
+
+- Menu: `Settings` -> `Email delivery...`
+- Choose `Outlook` or `SMTP`
+- For SMTP, enter host, port, from address, credentials, and TLS options
+- The app prompts for restart after saving
+
+Environment variables are still supported as fallback (or for headless setups):
+
+```bash
+export MAILMERGE_PROVIDER=outlook  # or smtp
+```
+
+SMTP configuration:
+
+```bash
+export MAILMERGE_PROVIDER=smtp
+export MAILMERGE_SMTP_HOST=smtp.example.com
+export MAILMERGE_SMTP_PORT=587
+export MAILMERGE_SMTP_FROM=sender@example.com
+export MAILMERGE_SMTP_USER=sender@example.com
+export MAILMERGE_SMTP_PASSWORD=your-password
+export MAILMERGE_SMTP_STARTTLS=1
+export MAILMERGE_SMTP_SSL=0
+```
+
+Notes:
+
+- SMTP backend supports `Send` and `Dry run`.
+- `Draft` and Outlook compose `Preview` are Outlook-only features.
+
 ## Build (Windows)
 
 ```

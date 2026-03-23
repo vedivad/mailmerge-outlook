@@ -57,9 +57,15 @@ def main() -> None:
         QProcess.startDetached(sys.executable, sys.argv)
         application.quit()
 
+    def on_restart_requested() -> None:
+        """Restart the app process after settings changes."""
+        QProcess.startDetached(sys.executable, sys.argv)
+        application.quit()
+
     window = MainWindow(
         current_language=active_language,
         on_language_change=on_language_change,
+        on_restart_requested=on_restart_requested,
     )
     # Keep a strong reference for translator lifetime.
     application._mailmerge_translator = translator  # type: ignore[attr-defined]

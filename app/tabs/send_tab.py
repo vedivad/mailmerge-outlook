@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app import contact_manager, mailer, template_manager
+from app import contact_manager, delivery, template_manager
 from app.config import TEMPLATES_DIR
 from app.tabs import send_ui
 from app.widgets import ContactPickerDialog
@@ -67,22 +67,35 @@ class SendTab(QWidget):
 
     def _set_send_buttons_enabled(self, enabled: bool) -> None:
         """Enable or disable all action buttons during a send loop."""
-        action_buttons = {
-            self._ui.btn_dry_run,
-            self._ui.btn_draft,
-            self._ui.btn_send,
-            self._ui.btn_preview,
-        }
-        for btn in action_buttons:
-            if enabled and btn is not self._ui.btn_dry_run and not mailer.OUTLOOK_AVAILABLE:
-                btn.setEnabled(False)
-            else:
-                btn.setEnabled(enabled)
+        caps = delivery.capabilities()
+        if not enabled:
+            self._ui.btn_dry_run.setEnabled(False)
+            self._ui.btn_draft.setEnabled(False)
+            self._ui.btn_send.setEnabled(False)
+            self._ui.btn_preview.setEnabled(False)
+            return
+
+        self._ui.btn_dry_run.setEnabled(True)
+        self._ui.btn_send.setEnabled(caps.available)
+        self._ui.btn_draft.setEnabled(caps.available and caps.supports_draft)
+        self._ui.btn_preview.setEnabled(caps.available and caps.supports_preview)
 
     # -- Slots --
 
     def _on_preview(self) -> None:
         """Open a contact picker, then display the email in Outlook for inspection."""
+        caps = delivery.capabilities()
+        if not caps.available:
+            QMessageBox.warning(self, self.tr("Preview"), caps.unavailable_reason)
+            return
+        if not caps.supports_preview:
+            QMessageBox.information(
+                self,
+                self.tr("Preview"),
+                self.tr("Preview is only available with Outlook."),
+            )
+            return
+
         topic = self._send_topic()
         if not topic:
             QMessageBox.information(
@@ -144,17 +157,29 @@ class SendTab(QWidget):
         ]
 
         try:
-            mailer.display_email(email, subject, html_body, image_paths=image_paths)
+            delivery.display_email(email, subject, html_body, image_paths=image_paths)
             self._log_msg(self.tr("PREVIEW {email}").format(email=email))
         except Exception as exc:
             QMessageBox.critical(
                 self,
                 self.tr("Preview"),
-                self.tr("Outlook error:\n{error}").format(error=exc),
+                self.tr("Preview error:\n{error}").format(error=exc),
             )
 
     def _on_action(self, mode: str) -> None:
         """Open a contact picker and execute the chosen mode (dry_run/draft/send)."""
+        caps = delivery.capabilities()
+        if mode in {"draft", "send"} and not caps.available:
+            QMessageBox.warning(self, self.tr("Send"), caps.unavailable_reason)
+            return
+        if mode == "draft" and not caps.supports_draft:
+            QMessageBox.information(
+                self,
+                self.tr("Send"),
+                self.tr("Draft mode is only available with Outlook."),
+            )
+            return
+
         contacts = self._get_all_contacts()
         if not contacts:
             QMessageBox.information(self, self.tr("Send"), self.tr("No contacts loaded."))
@@ -232,18 +257,18 @@ class SendTab(QWidget):
             )
             return
 
-        # Prepare COM object once for real sends
-        outlook_app = None
+        # Prepare provider session once for real sends
+        delivery_session = None
         if not dry_run:
             try:
-                import win32com.client  # type: ignore[import-untyped]
-
-                outlook_app = win32com.client.Dispatch("Outlook.Application")
+                delivery_session = delivery.create_session()
             except Exception as exc:
                 QMessageBox.critical(
                     self,
-                    self.tr("Outlook error"),
-                    self.tr("Failed to connect to Outlook:\n{error}").format(error=exc),
+                    self.tr("Delivery error"),
+                    self.tr("Failed to initialize email provider:\n{error}").format(
+                        error=exc
+                    ),
                 )
                 return
 
@@ -258,7 +283,7 @@ class SendTab(QWidget):
             "mode": mode,
             "dry_run": dry_run,
             "topic": topic,
-            "outlook_app": outlook_app,
+            "delivery_session": delivery_session,
             "index": 0,
             "sent": 0,
             "skipped": 0,
@@ -330,18 +355,18 @@ class SendTab(QWidget):
         ]
 
         if s["dry_run"]:
-            result = mailer.dry_run_email(email, subject, body)
+            result = delivery.dry_run_email(email, subject, body)
             self._log_msg(
                 self.tr("DRY RUN {email}\n{result}").format(email=email, result=result)
             )
             s["sent"] += 1
         else:
             try:
-                mailer.send_email(
+                delivery.send_email(
                     email,
                     subject,
                     html_body,
-                    outlook_app=s["outlook_app"],
+                    delivery_session=s["delivery_session"],
                     image_paths=image_paths,
                     draft=(mode == "draft"),
                 )
