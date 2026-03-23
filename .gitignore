@@ -6,5 +6,5 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
-.claude/projects/-home-dyb-Projects-py-outlook/memory/feedback_drag_drop.md
-.claude/projects/-home-dyb-Projects-py-outlook/memory/MEMORY.md
+CLAUDE.md
+.claude/
