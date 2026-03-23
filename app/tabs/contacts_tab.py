@@ -5,12 +5,19 @@ from pathlib import Path
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QHBoxLayout,
     QHeaderView,
     QInputDialog,
+    QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QTableWidgetItem,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -100,6 +107,10 @@ class ContactsTab(QWidget):
 
         self._ui.lang_tabs.blockSignals(False)
 
+    def headers(self) -> list[str]:
+        """Return the current column headers (excluding 'language')."""
+        return list(self._headers)
+
     def all_contacts(self) -> list[dict[str, str]]:
         """Gather all contacts from all language tabs, with language added."""
         rows: list[dict[str, str]] = []
@@ -136,6 +147,37 @@ class ContactsTab(QWidget):
         self._lang_tables[lang] = table
         return table
 
+    def _is_bool_column(self, col: int) -> bool:
+        """Return True if the column at *col* is a boolean column (name ends with ?)."""
+        return col < len(self._headers) and self._headers[col].endswith("?")
+
+    def _set_checkbox(
+        self, table: ExcelTable, row: int, col: int, checked: bool
+    ) -> None:
+        """Place a centered checkbox widget in a table cell."""
+        cb = QCheckBox()
+        cb.setChecked(checked)
+        cb.stateChanged.connect(lambda: self._schedule_contacts_save())
+        container = QWidget()
+        lay = QHBoxLayout(container)
+        lay.addWidget(cb)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.setContentsMargins(0, 0, 0, 0)
+        table.setCellWidget(row, col, container)
+        # Set a dummy item so column count logic still works
+        item = QTableWidgetItem()
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        table.setItem(row, col, item)
+
+    def _get_checkbox(self, table: ExcelTable, row: int, col: int) -> bool:
+        """Read the checked state of a checkbox cell widget."""
+        widget = table.cellWidget(row, col)
+        if widget:
+            cb = widget.findChild(QCheckBox)
+            if cb:
+                return cb.isChecked()
+        return False
+
     def _populate_table(self, table: ExcelTable, rows: list[dict[str, str]]) -> None:
         """Fill a table from a list of row dicts, plus an empty sentinel row."""
         table.blockSignals(True)
@@ -145,8 +187,14 @@ class ContactsTab(QWidget):
 
         for r, row in enumerate(rows):
             for c, header in enumerate(self._headers):
-                item = QTableWidgetItem(row.get(header, ""))
-                table.setItem(r, c, item)
+                if self._is_bool_column(c):
+                    val = row.get(header, "").strip().lower()
+                    self._set_checkbox(
+                        table, r, c, val in ("true", "1", "ja", "yes", "x")
+                    )
+                else:
+                    item = QTableWidgetItem(row.get(header, ""))
+                    table.setItem(r, c, item)
 
         self._init_sentinel_row(table, len(rows))
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -157,9 +205,12 @@ class ContactsTab(QWidget):
     def _init_sentinel_row(self, table: ExcelTable, row: int) -> None:
         """Set up the empty sentinel row with greyed-out placeholder style."""
         for c in range(len(self._headers)):
-            item = QTableWidgetItem("")
-            item.setForeground(QColor(180, 180, 180))
-            table.setItem(row, c, item)
+            if self._is_bool_column(c):
+                self._set_checkbox(table, row, c, checked=False)
+            else:
+                item = QTableWidgetItem("")
+                item.setForeground(QColor(180, 180, 180))
+                table.setItem(row, c, item)
 
     def _data_row_count(self, table: ExcelTable) -> int:
         """Return the number of data rows (excluding the sentinel row)."""
@@ -176,8 +227,13 @@ class ContactsTab(QWidget):
         """Convert a table row to a dict keyed by column headers."""
         result: dict[str, str] = {}
         for c, header in enumerate(self._headers):
-            item = table.item(row_index, c)
-            result[header] = item.text() if item else ""
+            if self._is_bool_column(c):
+                result[header] = (
+                    "true" if self._get_checkbox(table, row_index, c) else "false"
+                )
+            else:
+                item = table.item(row_index, c)
+                result[header] = item.text() if item else ""
         return result
 
     def _validate_row_dict(self, row_dict: dict[str, str], lang: str) -> list[str]:
@@ -277,17 +333,40 @@ class ContactsTab(QWidget):
 
     def _on_add_column(self) -> None:
         """Add a new column (placeholder) to all language tables."""
-        name, ok = QInputDialog.getText(
-            self, "Spalte hinzufuegen", "Spaltenname (z.B. titel, abteilung):"
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Spalte hinzufuegen")
+        layout = QVBoxLayout(dlg)
+
+        layout.addWidget(QLabel("Spaltenname (z.B. titel, abteilung):"))
+        name_edit = QLineEdit()
+        layout.addWidget(name_edit)
+
+        bool_cb = QCheckBox("Ja/Nein-Spalte (Boolean)")
+        layout.addWidget(bool_cb)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        if not ok or not name.strip():
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        name = name.strip()
+
+        name = name_edit.text().strip()
+        if not name:
+            return
+        if bool_cb.isChecked() and not name.endswith("?"):
+            name = name + "?"
+
         if name in self._headers:
             QMessageBox.information(
                 self, "Spalte hinzufuegen", f"Spalte '{name}' existiert bereits."
             )
             return
+
+        is_bool = name.endswith("?")
         self._headers.append(name)
         for table in self._lang_tables.values():
             table.blockSignals(True)
@@ -295,7 +374,10 @@ class ContactsTab(QWidget):
             table.setColumnCount(col + 1)
             table.setHorizontalHeaderLabels(self._headers)
             for r in range(table.rowCount()):
-                table.setItem(r, col, QTableWidgetItem(""))
+                if is_bool:
+                    self._set_checkbox(table, r, col, checked=False)
+                else:
+                    table.setItem(r, col, QTableWidgetItem(""))
             table.blockSignals(False)
         self._schedule_contacts_save()
 
@@ -397,6 +479,8 @@ class ContactsTab(QWidget):
         if not ok or not new_name.strip():
             return
         new_name = new_name.strip()
+        if old_name.endswith("?") and not new_name.endswith("?"):
+            new_name = new_name + "?"
         if new_name == old_name:
             return
         if new_name in self._headers:

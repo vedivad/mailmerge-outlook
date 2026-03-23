@@ -1,6 +1,7 @@
 """Templates tab — topic/language template editing with formatting toolbar."""
 
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer, pyqtSignal
@@ -11,6 +12,7 @@ from PyQt6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMessageBox,
     QPushButton,
     QTextEdit,
@@ -28,8 +30,13 @@ class TemplatesTab(QWidget):
 
     templates_changed = pyqtSignal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        get_headers: Callable[[], list[str]] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        self._get_headers = get_headers or (lambda: [])
         self._loading_template: bool = False
 
         # Build UI
@@ -50,6 +57,7 @@ class TemplatesTab(QWidget):
         )
         self._ui.btn_link.clicked.connect(self._insert_link)
         self._ui.btn_image.clicked.connect(self._insert_image)
+        self._ui.btn_placeholder.clicked.connect(self._insert_placeholder)
         self._ui.btn_preview.clicked.connect(self._on_preview_template)
         self._ui.subject_edit.textChanged.connect(self._on_template_edited)
         self._ui.body_edit.textChanged.connect(self._on_template_edited)
@@ -273,6 +281,74 @@ class TemplatesTab(QWidget):
 
         cursor = self._ui.body_edit.textCursor()
         cursor.insertText(f"![{desc}](image:{src.name})")
+        self._ui.body_edit.setFocus()
+
+    def _insert_placeholder(self) -> None:
+        """Show a picker of available columns and insert the chosen placeholder."""
+        headers = self._get_headers()
+        if not headers:
+            QMessageBox.information(
+                self,
+                "Platzhalter",
+                "Keine Spalten vorhanden. Bitte zuerst Kontakte laden.",
+            )
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Platzhalter einfuegen")
+        layout = QVBoxLayout(dlg)
+
+        layout.addWidget(QLabel("Spalte auswaehlen:"))
+        col_list = QListWidget()
+        col_list.addItems(headers)
+        col_list.setCurrentRow(0)
+        col_list.itemDoubleClicked.connect(dlg.accept)
+        layout.addWidget(col_list)
+
+        # True/false value fields (shown only for boolean columns)
+        bool_group = QWidget()
+        bool_layout = QVBoxLayout(bool_group)
+        bool_layout.setContentsMargins(0, 0, 0, 0)
+        bool_layout.addWidget(QLabel("Wert wenn Ja:"))
+        true_edit = QLineEdit()
+        true_edit.setPlaceholderText("z.B. geehrter")
+        bool_layout.addWidget(true_edit)
+        bool_layout.addWidget(QLabel("Wert wenn Nein:"))
+        false_edit = QLineEdit()
+        false_edit.setPlaceholderText("z.B. geehrte")
+        bool_layout.addWidget(false_edit)
+        layout.addWidget(bool_group)
+
+        def _on_selection_changed() -> None:
+            row = col_list.currentRow()
+            is_bool = row >= 0 and headers[row].endswith("?")
+            bool_group.setVisible(is_bool)
+
+        col_list.currentRowChanged.connect(lambda: _on_selection_changed())
+        _on_selection_changed()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        row = col_list.currentRow()
+        if row < 0:
+            return
+        col_name = headers[row]
+
+        cursor = self._ui.body_edit.textCursor()
+        if col_name.endswith("?"):
+            true_val = true_edit.text()
+            false_val = false_edit.text()
+            cursor.insertText(f"{{{col_name}:{true_val}:{false_val}}}")
+        else:
+            cursor.insertText(f"{{{col_name}}}")
         self._ui.body_edit.setFocus()
 
     def _on_new_topic(self) -> None:

@@ -114,10 +114,10 @@ class SendTab(QWidget):
             return
 
         try:
-            subject = tpl["subject"].format(**row)
-            body = tpl["body"].format(**row)
-        except KeyError as exc:
-            QMessageBox.warning(self, "Vorschau", f"Fehlender Platzhalterwert: {exc}")
+            subject = template_manager.resolve_template(tpl["subject"], row)
+            body = template_manager.resolve_template(tpl["body"], row)
+        except Exception as exc:
+            QMessageBox.warning(self, "Vorschau", f"Vorlagenfehler: {exc}")
             return
 
         html_body = template_manager.render_html(
@@ -276,10 +276,10 @@ class SendTab(QWidget):
             return
 
         try:
-            subject = tpl["subject"].format(**row)
-            body = tpl["body"].format(**row)
-        except KeyError as exc:
-            self._log_msg(f"UEBERSPRUNGEN {email} — fehlender Platzhalter {exc}")
+            subject = template_manager.resolve_template(tpl["subject"], row)
+            body = template_manager.resolve_template(tpl["body"], row)
+        except Exception as exc:
+            self._log_msg(f"UEBERSPRUNGEN {email} — Vorlagenfehler: {exc}")
             s["skipped"] += 1
             self._ui.progress.setValue(i + 1)
             s["index"] += 1

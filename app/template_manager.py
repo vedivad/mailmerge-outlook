@@ -14,6 +14,7 @@ import string
 from pathlib import Path
 
 import markdown as _md
+from jinja2 import BaseLoader, Environment
 
 from app.config import TEMPLATES_DIR
 
@@ -86,6 +87,54 @@ def save_template(
     return path
 
 
+_jinja_env = Environment(loader=BaseLoader(), keep_trailing_newline=True)
+
+
+def resolve_template(text: str, context: dict[str, str]) -> str:
+    """Resolve placeholders in *text* using Jinja2.
+
+    Supports both ``{name}`` shorthand (converted to ``{{ name }}``) and
+    native Jinja2 syntax (``{% if formal? %}...{% endif %}``).
+
+    Boolean columns (names ending with ``?``) are converted to ``True``/``False``
+    in the context automatically.
+    """
+    # Expand boolean shorthand: {col?:yes_val:no_val} → {% if col? %}yes_val{% else %}no_val{% endif %}
+    text = re.sub(
+        r"\{([a-zA-Z_][a-zA-Z0-9_]*\?):([^}:]*):([^}]*)\}",
+        r"{% if \1 %}\2{% else %}\3{% endif %}",
+        text,
+    )
+    # Convert {name} shorthand to {{ name }}, but leave {% %} and {{ }} untouched
+    converted = re.sub(
+        r"(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_?]*)\}(?!\})",
+        r"{{ \1 }}",
+        text,
+    )
+    # Jinja2 doesn't allow ? in variable names, so replace col? with col_bool
+    # in both the template and context
+    bool_context: dict[str, str | bool] = {}
+    for key, value in context.items():
+        if key.endswith("?"):
+            clean_key = key[:-1] + "_bool"
+            bool_context[clean_key] = value.strip().lower() in (
+                "true",
+                "1",
+                "ja",
+                "yes",
+                "x",
+            )
+        else:
+            bool_context[key] = value
+    converted = re.sub(
+        r"(\{\{|\{%)(.*?)\b([a-zA-Z_][a-zA-Z0-9_]*)\?(.*?)(%\}|\}\})",
+        r"\1\2\3_bool\4\5",
+        converted,
+    )
+    tpl = _jinja_env.from_string(converted)
+    return tpl.render(**bool_context)
+
+
 def render_html(
     text: str,
     topic: str | None = None,
@@ -132,17 +181,33 @@ def list_images(topic: str, templates_dir: Path = TEMPLATES_DIR) -> list[str]:
 
 
 def extract_placeholders(text: str) -> list[str]:
-    """Return sorted unique ``{placeholder}`` names found in *text*."""
-    formatter = string.Formatter()
+    """Return sorted unique placeholder names found in *text*.
+
+    Detects both ``{name}`` shorthand and Jinja2 ``{{ name }}`` /
+    ``{% if name %}`` references.
+    """
     names: set[str] = set()
+
+    # {name} shorthand
+    formatter = string.Formatter()
     try:
         parsed = formatter.parse(text)
         for _, field_name, _, _ in parsed:
             if field_name is not None:
-                # Only keep the top-level name (before any '.' or '[')
                 root = field_name.split(".")[0].split("[")[0]
                 if root:
                     names.add(root)
     except ValueError:
         pass
+
+    # Boolean shorthand {col?:yes:no}
+    names.update(re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*\?):[^}]*\}", text))
+
+    # Jinja2 {{ name }} and {% if name %} references
+    names.update(re.findall(r"\{\{[\s]*([a-zA-Z_][a-zA-Z0-9_?]*)[\s]*\}\}", text))
+    names.update(re.findall(r"\{%.*?\b([a-zA-Z_][a-zA-Z0-9_?]*)\b.*?%\}", text))
+    # Filter out Jinja2 keywords
+    keywords = {"if", "else", "endif", "for", "endfor", "not", "and", "or", "in"}
+    names -= keywords
+
     return sorted(names)

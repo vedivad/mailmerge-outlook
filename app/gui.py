@@ -16,7 +16,7 @@ class MainWindow(QMainWindow):
 
         # Create tab widgets
         self._contacts_tab = ContactsTab()
-        self._templates_tab = TemplatesTab()
+        self._templates_tab = TemplatesTab(get_headers=self._contacts_tab.headers)
         self._send_tab = SendTab(
             get_all_contacts=self._contacts_tab.all_contacts,
             get_font_kwargs=self._templates_tab.font_kwargs,

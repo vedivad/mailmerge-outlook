@@ -28,6 +28,7 @@ class TemplatesWidgets:
     btn_italic: QPushButton
     btn_link: QPushButton
     btn_image: QPushButton
+    btn_placeholder: QPushButton
     btn_new_topic: QPushButton
     btn_new_lang: QPushButton
     btn_preview: QPushButton
@@ -111,7 +112,10 @@ def build(parent: QWidget) -> TemplatesWidgets:
     btn_image = QPushButton("Bild")
     btn_image.setToolTip("Bild einfuegen")
 
-    for btn in (btn_bold, btn_italic, btn_link, btn_image):
+    btn_placeholder = QPushButton("{x}")
+    btn_placeholder.setToolTip("Platzhalter einfuegen")
+
+    for btn in (btn_bold, btn_italic, btn_link, btn_image, btn_placeholder):
         fmt_layout.addWidget(btn)
     fmt_layout.addStretch()
     layout.addLayout(fmt_layout)
@@ -149,6 +153,7 @@ def build(parent: QWidget) -> TemplatesWidgets:
         btn_italic=btn_italic,
         btn_link=btn_link,
         btn_image=btn_image,
+        btn_placeholder=btn_placeholder,
         btn_new_topic=btn_new_topic,
         btn_new_lang=btn_new_lang,
         btn_preview=btn_preview,

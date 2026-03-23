@@ -3,3 +3,4 @@ pywin32>=306 ; sys_platform == 'win32'
 pyinstaller>=6.0
 ruff>=0.4
 markdown>=3.5
+Jinja2>=3.1
