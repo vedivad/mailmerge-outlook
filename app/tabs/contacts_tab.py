@@ -61,7 +61,9 @@ class ContactsTab(QWidget):
             self._rows = contact_manager.load_csv(path)
         except FileNotFoundError:
             QMessageBox.warning(
-                self, "Datei nicht gefunden", f"Konnte {path} nicht finden"
+                self,
+                self.tr("File not found"),
+                self.tr("Could not find {path}").format(path=path),
             )
             return
 
@@ -263,7 +265,7 @@ class ContactsTab(QWidget):
         """Mark contacts as unsaved and restart the debounce timer."""
         if self._loading_contacts:
             return
-        self._ui.save_status.setText("Ungespeichert...")
+        self._ui.save_status.setText(self.tr("Unsaved..."))
         self._ui.save_status.setStyleSheet("color: orange;")
         self._save_timer.start()
 
@@ -271,7 +273,7 @@ class ContactsTab(QWidget):
         """Save all contacts to the default CSV (called by debounce timer)."""
         rows = self.all_contacts()
         contact_manager.save_csv(self._contacts_path, rows)
-        self._ui.save_status.setText("Gespeichert")
+        self._ui.save_status.setText(self.tr("Saved"))
         self._ui.save_status.setStyleSheet("color: gray;")
 
     # -- Slots --
@@ -279,7 +281,7 @@ class ContactsTab(QWidget):
     def _on_import_csv(self) -> None:
         """Open a file dialog and import contacts from a CSV."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "CSV importieren", str(PROJECT_DIR), "CSV-Dateien (*.csv)"
+            self, self.tr("Import CSV"), str(PROJECT_DIR), self.tr("CSV files (*.csv)")
         )
         if path:
             self.load_csv(Path(path))
@@ -288,7 +290,7 @@ class ContactsTab(QWidget):
     def _on_export_csv(self) -> None:
         """Export all contacts to a user-chosen CSV file."""
         path, _ = QFileDialog.getSaveFileName(
-            self, "CSV exportieren", str(PROJECT_DIR), "CSV-Dateien (*.csv)"
+            self, self.tr("Export CSV"), str(PROJECT_DIR), self.tr("CSV files (*.csv)")
         )
         if path:
             rows = self.all_contacts()
@@ -314,9 +316,9 @@ class ContactsTab(QWidget):
 
         menu = QMenu(table)
         if len(selected_rows) == 1:
-            label = "Zeile loeschen"
+            label = self.tr("Delete row")
         else:
-            label = f"{len(selected_rows)} Zeilen loeschen"
+            label = self.tr("Delete {count} rows").format(count=len(selected_rows))
         delete_action = QAction(label, table)
         delete_action.triggered.connect(lambda: self._delete_rows(table, selected_rows))
         menu.addAction(delete_action)
@@ -333,14 +335,14 @@ class ContactsTab(QWidget):
     def _on_add_column(self) -> None:
         """Add a new column (placeholder) to all language tables."""
         dlg = QDialog(self)
-        dlg.setWindowTitle("Spalte hinzufuegen")
+        dlg.setWindowTitle(self.tr("Add column"))
         layout = QVBoxLayout(dlg)
 
-        layout.addWidget(QLabel("Spaltenname (z.B. titel, abteilung):"))
+        layout.addWidget(QLabel(self.tr("Column name (e.g. title, department):")))
         name_edit = QLineEdit()
         layout.addWidget(name_edit)
 
-        bool_cb = QCheckBox("Ja/Nein-Spalte (Boolean)")
+        bool_cb = QCheckBox(self.tr("Yes/No column (Boolean)"))
         layout.addWidget(bool_cb)
 
         buttons = QDialogButtonBox(
@@ -361,7 +363,9 @@ class ContactsTab(QWidget):
 
         if name in self._headers:
             QMessageBox.information(
-                self, "Spalte hinzufuegen", f"Spalte '{name}' existiert bereits."
+                self,
+                self.tr("Add column"),
+                self.tr("Column '{name}' already exists.").format(name=name),
             )
             return
 
@@ -386,23 +390,27 @@ class ContactsTab(QWidget):
         col = header.logicalIndexAt(pos)
         menu = QMenu(self)
 
-        add_action = QAction("Spalte hinzufuegen", self)
+        add_action = QAction(self.tr("Add column"), self)
         add_action.triggered.connect(self._on_add_column)
         menu.addAction(add_action)
 
-        reorder_action = QAction("Spalten ordnen", self)
+        reorder_action = QAction(self.tr("Reorder columns"), self)
         reorder_action.triggered.connect(self._on_reorder_columns)
         menu.addAction(reorder_action)
 
         if col >= 0:
             col_name = self._headers[col] if col < len(self._headers) else ""
 
-            rename_action = QAction(f"Spalte '{col_name}' umbenennen", self)
+            rename_action = QAction(
+                self.tr("Rename column '{name}'").format(name=col_name), self
+            )
             rename_action.triggered.connect(lambda: self._rename_column(col))
             menu.addAction(rename_action)
 
             if col_name.lower() != "email":
-                remove_action = QAction(f"Spalte '{col_name}' entfernen", self)
+                remove_action = QAction(
+                    self.tr("Remove column '{name}'").format(name=col_name), self
+                )
                 remove_action.triggered.connect(lambda: self._remove_column(col))
                 menu.addAction(remove_action)
 
@@ -451,8 +459,10 @@ class ContactsTab(QWidget):
         col_name = self._headers[col]
         reply = QMessageBox.question(
             self,
-            "Spalte entfernen",
-            f"Spalte '{col_name}' wirklich aus allen Sprach-Tabs entfernen?",
+            self.tr("Remove column"),
+            self.tr(
+                "Really remove column '{name}' from all language tabs?"
+            ).format(name=col_name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -475,8 +485,8 @@ class ContactsTab(QWidget):
         old_name = self._headers[col]
         new_name, ok = QInputDialog.getText(
             self,
-            "Spalte umbenennen",
-            f"Neuer Name fuer Spalte '{old_name}':",
+            self.tr("Rename column"),
+            self.tr("New name for column '{name}':").format(name=old_name),
             text=old_name,
         )
         if not ok or not new_name.strip():
@@ -488,7 +498,9 @@ class ContactsTab(QWidget):
             return
         if new_name in self._headers:
             QMessageBox.information(
-                self, "Spalte umbenennen", f"Spalte '{new_name}' existiert bereits."
+                self,
+                self.tr("Rename column"),
+                self.tr("Column '{name}' already exists.").format(name=new_name),
             )
             return
         self._headers[col] = new_name

@@ -8,7 +8,6 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QDialog,
     QMessageBox,
-    QPushButton,
     QWidget,
 )
 
@@ -68,13 +67,17 @@ class SendTab(QWidget):
 
     def _set_send_buttons_enabled(self, enabled: bool) -> None:
         """Enable or disable all action buttons during a send loop."""
-        for btn in self.findChildren(QPushButton):
-            text = btn.text()
-            if text in ("Testlauf", "Entwurf", "Senden", "Vorschau (Outlook)"):
-                if enabled and text != "Testlauf" and not mailer.OUTLOOK_AVAILABLE:
-                    btn.setEnabled(False)
-                else:
-                    btn.setEnabled(enabled)
+        action_buttons = {
+            self._ui.btn_dry_run,
+            self._ui.btn_draft,
+            self._ui.btn_send,
+            self._ui.btn_preview,
+        }
+        for btn in action_buttons:
+            if enabled and btn is not self._ui.btn_dry_run and not mailer.OUTLOOK_AVAILABLE:
+                btn.setEnabled(False)
+            else:
+                btn.setEnabled(enabled)
 
     # -- Slots --
 
@@ -83,13 +86,13 @@ class SendTab(QWidget):
         topic = self._send_topic()
         if not topic:
             QMessageBox.information(
-                self, "Vorschau", "Bitte zuerst ein Thema auswaehlen."
+                self, self.tr("Preview"), self.tr("Please select a topic first.")
             )
             return
 
         contacts = self._get_all_contacts()
         if not contacts:
-            QMessageBox.information(self, "Vorschau", "Keine Kontakte geladen.")
+            QMessageBox.information(self, self.tr("Preview"), self.tr("No contacts loaded."))
             return
 
         dlg = ContactPickerDialog(contacts, multi_select=False, parent=self)
@@ -108,8 +111,10 @@ class SendTab(QWidget):
         except FileNotFoundError:
             QMessageBox.warning(
                 self,
-                "Vorschau",
-                f"Keine Vorlage fuer Thema '{topic}', Sprache '{lang}'.",
+                self.tr("Preview"),
+                self.tr("No template for topic '{topic}', language '{lang}'.").format(
+                    topic=topic, lang=lang
+                ),
             )
             return
 
@@ -117,7 +122,11 @@ class SendTab(QWidget):
             subject = template_manager.resolve_template(tpl["subject"], row)
             body = template_manager.resolve_template(tpl["body"], row)
         except Exception as exc:
-            QMessageBox.warning(self, "Vorschau", f"Vorlagenfehler: {exc}")
+            QMessageBox.warning(
+                self,
+                self.tr("Preview"),
+                self.tr("Template error: {error}").format(error=exc),
+            )
             return
 
         html_body = template_manager.render_html(
@@ -136,15 +145,19 @@ class SendTab(QWidget):
 
         try:
             mailer.display_email(email, subject, html_body, image_paths=image_paths)
-            self._log_msg(f"VORSCHAU {email}")
+            self._log_msg(self.tr("PREVIEW {email}").format(email=email))
         except Exception as exc:
-            QMessageBox.critical(self, "Vorschau", f"Outlook-Fehler:\n{exc}")
+            QMessageBox.critical(
+                self,
+                self.tr("Preview"),
+                self.tr("Outlook error:\n{error}").format(error=exc),
+            )
 
     def _on_action(self, mode: str) -> None:
         """Open a contact picker and execute the chosen mode (dry_run/draft/send)."""
         contacts = self._get_all_contacts()
         if not contacts:
-            QMessageBox.information(self, "Senden", "Keine Kontakte geladen.")
+            QMessageBox.information(self, self.tr("Send"), self.tr("No contacts loaded."))
             return
 
         dlg = ContactPickerDialog(contacts, multi_select=True, parent=self)
@@ -152,16 +165,18 @@ class SendTab(QWidget):
             return
         selected = dlg.selected_contacts()
         if not selected:
-            QMessageBox.information(self, "Senden", "Keine Kontakte ausgewaehlt.")
+            QMessageBox.information(self, self.tr("Send"), self.tr("No contacts selected."))
             return
 
         count = len(selected)
         if mode == "draft":
             answer = QMessageBox.question(
                 self,
-                "Entwurf erstellen",
-                f"{count} E-Mail(s) werden als Entwurf in Outlook gespeichert.\n\n"
-                "Fortfahren?",
+                self.tr("Create drafts"),
+                self.tr(
+                    "{count} email(s) will be saved as drafts in Outlook.\n\n"
+                    "Continue?"
+                ).format(count=count),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -170,10 +185,12 @@ class SendTab(QWidget):
         elif mode == "send":
             answer = QMessageBox.warning(
                 self,
-                "E-Mails senden",
-                f"{count} E-Mail(s) werden jetzt ueber Outlook versendet.\n\n"
-                "Dieser Vorgang kann nicht rueckgaengig gemacht werden.\n\n"
-                "Fortfahren?",
+                self.tr("Send emails"),
+                self.tr(
+                    "{count} email(s) will now be sent via Outlook.\n\n"
+                    "This action cannot be undone.\n\n"
+                    "Continue?"
+                ).format(count=count),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -190,7 +207,7 @@ class SendTab(QWidget):
         """
         topic = self._send_topic()
         if not topic:
-            QMessageBox.warning(self, "Senden", "Bitte zuerst ein Thema auswaehlen.")
+            QMessageBox.warning(self, self.tr("Send"), self.tr("Please select a topic first."))
             return
 
         dry_run = mode == "dry_run"
@@ -204,11 +221,14 @@ class SendTab(QWidget):
                 invalid_rows.append((i + 1, errors))
 
         if invalid_rows:
-            msg_lines = [f"Row {idx}: {'; '.join(errs)}" for idx, errs in invalid_rows]
+            msg_lines = [
+                self.tr("Row {row}: {errors}").format(row=idx, errors="; ".join(errs))
+                for idx, errs in invalid_rows
+            ]
             QMessageBox.warning(
                 self,
-                "Validierungsfehler",
-                "Bitte beheben Sie folgende Fehler:\n\n" + "\n".join(msg_lines),
+                self.tr("Validation errors"),
+                self.tr("Please fix the following errors:") + "\n\n" + "\n".join(msg_lines),
             )
             return
 
@@ -222,8 +242,8 @@ class SendTab(QWidget):
             except Exception as exc:
                 QMessageBox.critical(
                     self,
-                    "Outlook-Fehler",
-                    f"Verbindung zu Outlook fehlgeschlagen:\n{exc}",
+                    self.tr("Outlook error"),
+                    self.tr("Failed to connect to Outlook:\n{error}").format(error=exc),
                 )
                 return
 
@@ -267,7 +287,11 @@ class SendTab(QWidget):
             tpl = template_manager.load_template(topic, lang, TEMPLATES_DIR)
         except FileNotFoundError:
             self._log_msg(
-                f"UEBERSPRUNGEN {email} — keine '{topic}'-Vorlage fuer '{lang}'"
+                self.tr("SKIPPED {email} — no '{topic}' template for '{lang}'").format(
+                    email=email,
+                    topic=topic,
+                    lang=lang,
+                )
             )
             s["skipped"] += 1
             self._ui.progress.setValue(i + 1)
@@ -279,7 +303,12 @@ class SendTab(QWidget):
             subject = template_manager.resolve_template(tpl["subject"], row)
             body = template_manager.resolve_template(tpl["body"], row)
         except Exception as exc:
-            self._log_msg(f"UEBERSPRUNGEN {email} — Vorlagenfehler: {exc}")
+            self._log_msg(
+                self.tr("SKIPPED {email} — template error: {error}").format(
+                    email=email,
+                    error=exc,
+                )
+            )
             s["skipped"] += 1
             self._ui.progress.setValue(i + 1)
             s["index"] += 1
@@ -302,7 +331,9 @@ class SendTab(QWidget):
 
         if s["dry_run"]:
             result = mailer.dry_run_email(email, subject, body)
-            self._log_msg(f"TESTLAUF {email}\n{result}")
+            self._log_msg(
+                self.tr("DRY RUN {email}\n{result}").format(email=email, result=result)
+            )
             s["sent"] += 1
         else:
             try:
@@ -314,11 +345,13 @@ class SendTab(QWidget):
                     image_paths=image_paths,
                     draft=(mode == "draft"),
                 )
-                label = "ENTWURF" if mode == "draft" else "GESENDET"
-                self._log_msg(f"{label} {email}")
+                label = self.tr("DRAFT") if mode == "draft" else self.tr("SENT")
+                self._log_msg(self.tr("{label} {email}").format(label=label, email=email))
                 s["sent"] += 1
             except Exception as exc:
-                self._log_msg(f"FEHLER {email} — {exc}")
+                self._log_msg(
+                    self.tr("ERROR {email} — {error}").format(email=email, error=exc)
+                )
                 s["errors"] += 1
 
         self._ui.progress.setValue(i + 1)
@@ -331,13 +364,20 @@ class SendTab(QWidget):
         """Show the summary after the send loop completes."""
         s = self._send_state
         mode = s["mode"]
-        mode_label = {"dry_run": "Testlauf", "draft": "Entwurf", "send": "Versand"}[
-            mode
-        ]
-        action_label = "gespeichert" if mode == "draft" else "gesendet"
+        mode_label = {
+            "dry_run": self.tr("Dry run"),
+            "draft": self.tr("Draft"),
+            "send": self.tr("Send"),
+        }[mode]
+        action_label = self.tr("saved") if mode == "draft" else self.tr("sent")
         self._ui.summary_label.setText(
-            f"Fertig ({mode_label}): {s['sent']} {action_label},"
-            f" {s['skipped']} uebersprungen, {s['errors']} Fehler"
+            self.tr("Done ({mode}): {sent} {action}, {skipped} skipped, {errors} errors").format(
+                mode=mode_label,
+                sent=s["sent"],
+                action=action_label,
+                skipped=s["skipped"],
+                errors=s["errors"],
+            )
         )
         self._set_send_buttons_enabled(True)
         self._send_state = {}

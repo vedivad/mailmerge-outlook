@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLineEdit,
     QListWidget,
     QMessageBox,
@@ -96,7 +97,7 @@ class ContactPickerDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(
-            "Kontakte auswaehlen" if multi_select else "Kontakt auswaehlen"
+            self.tr("Select contacts") if multi_select else self.tr("Select contact")
         )
         self.resize(600, 450)
         self._contacts = contacts
@@ -108,13 +109,13 @@ class ContactPickerDialog(QDialog):
 
         # Search bar
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Kontakte filtern...")
+        self._search.setPlaceholderText(self.tr("Filter contacts..."))
         self._search.textChanged.connect(self._apply_filter)
         layout.addWidget(self._search)
 
         # Select all (multi-select only)
         if multi_select:
-            self._select_all_cb = QCheckBox("Alle auswaehlen")
+            self._select_all_cb = QCheckBox(self.tr("Select all"))
             self._select_all_cb.stateChanged.connect(self._on_select_all)
             layout.addWidget(self._select_all_cb)
 
@@ -211,7 +212,7 @@ class ColumnReorderDialog(QDialog):
 
     def __init__(self, headers: list[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Spalten ordnen")
+        self.setWindowTitle(self.tr("Reorder columns"))
         self.resize(350, 400)
         self._result_order: list[str] = list(headers)
 
@@ -229,13 +230,13 @@ class ColumnReorderDialog(QDialog):
         btn_layout.addStretch()
 
         btn_up = QPushButton("\u25b2")
-        btn_up.setToolTip("Nach oben")
+        btn_up.setToolTip(self.tr("Move up"))
         btn_up.setFixedWidth(40)
         btn_up.clicked.connect(self._move_up)
         btn_layout.addWidget(btn_up)
 
         btn_down = QPushButton("\u25bc")
-        btn_down.setToolTip("Nach unten")
+        btn_down.setToolTip(self.tr("Move down"))
         btn_down.setFixedWidth(40)
         btn_down.clicked.connect(self._move_down)
         btn_layout.addWidget(btn_down)
@@ -288,7 +289,7 @@ class ListManagerDialog(QDialog):
         self,
         title: str,
         items: list[str],
-        add_label: str = "Hinzufuegen",
+        add_label: str = "Add",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -310,11 +311,11 @@ class ListManagerDialog(QDialog):
         btn_add.clicked.connect(self._on_add)
         btn_layout.addWidget(btn_add)
 
-        btn_rename = QPushButton("Umbenennen")
+        btn_rename = QPushButton(self.tr("Rename"))
         btn_rename.clicked.connect(self._on_rename)
         btn_layout.addWidget(btn_rename)
 
-        btn_delete = QPushButton("Loeschen")
+        btn_delete = QPushButton(self.tr("Delete"))
         btn_delete.clicked.connect(self._on_delete)
         btn_layout.addWidget(btn_delete)
 
@@ -330,16 +331,16 @@ class ListManagerDialog(QDialog):
 
     def _on_add(self) -> None:
         """Prompt for a new item name and add it."""
-        from PyQt6.QtWidgets import QInputDialog
-
-        name, ok = QInputDialog.getText(self, self._add_label, "Name:")
+        name, ok = QInputDialog.getText(self, self._add_label, self.tr("Name:"))
         if not ok or not name.strip():
             return
         name = name.strip().lower().replace(" ", "-")
         existing = [self._list.item(i).text() for i in range(self._list.count())]
         if name in existing:
             QMessageBox.information(
-                self, self._add_label, f"'{name}' existiert bereits."
+                self,
+                self._add_label,
+                self.tr("'{name}' already exists.").format(name=name),
             )
             return
         self._list.addItem(name)
@@ -348,14 +349,15 @@ class ListManagerDialog(QDialog):
 
     def _on_rename(self) -> None:
         """Rename the selected item."""
-        from PyQt6.QtWidgets import QInputDialog
-
         row = self._list.currentRow()
         if row < 0:
             return
         old_name = self._list.item(row).text()
         new_name, ok = QInputDialog.getText(
-            self, "Umbenennen", f"Neuer Name fuer '{old_name}':", text=old_name
+            self,
+            self.tr("Rename"),
+            self.tr("New name for '{name}':").format(name=old_name),
+            text=old_name,
         )
         if not ok or not new_name.strip():
             return
@@ -365,7 +367,9 @@ class ListManagerDialog(QDialog):
         existing = [self._list.item(i).text() for i in range(self._list.count())]
         if new_name in existing:
             QMessageBox.information(
-                self, "Umbenennen", f"'{new_name}' existiert bereits."
+                self,
+                self.tr("Rename"),
+                self.tr("'{name}' already exists.").format(name=new_name),
             )
             return
         self._list.item(row).setText(new_name)
@@ -379,8 +383,8 @@ class ListManagerDialog(QDialog):
         name = self._list.item(row).text()
         reply = QMessageBox.question(
             self,
-            "Loeschen",
-            f"'{name}' wirklich loeschen?",
+            self.tr("Delete"),
+            self.tr("Really delete '{name}'?").format(name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:

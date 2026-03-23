@@ -38,8 +38,11 @@ def build(parent: QWidget) -> SendWidgets:
     # Outlook availability notice
     if not mailer.OUTLOOK_AVAILABLE:
         notice = QLabel(
-            "\u26a0 Outlook ist auf dieser Plattform nicht verfuegbar. "
-            "Nur der Testlauf-Modus ist funktionsfaehig."
+            "\u26a0 "
+            + parent.tr(
+                "Outlook is not available on this platform. "
+                "Only dry-run mode is functional."
+            )
         )
         notice.setStyleSheet(
             "color: #b45309; background: #fef3c7; padding: 6px; border-radius: 4px;"
@@ -49,7 +52,7 @@ def build(parent: QWidget) -> SendWidgets:
 
     # Topic selector row
     topic_layout = QHBoxLayout()
-    topic_layout.addWidget(QLabel("Thema:"))
+    topic_layout.addWidget(QLabel(parent.tr("Topic:")))
     topic_combo = QComboBox()
     topic_layout.addWidget(topic_combo)
     topic_layout.addStretch()
@@ -58,27 +61,27 @@ def build(parent: QWidget) -> SendWidgets:
     # Controls row
     ctrl_layout = QHBoxLayout()
 
-    btn_dry_run = QPushButton("Testlauf")
+    btn_dry_run = QPushButton(parent.tr("Dry run"))
     ctrl_layout.addWidget(btn_dry_run)
 
-    btn_draft = QPushButton("Entwurf")
+    btn_draft = QPushButton(parent.tr("Draft"))
     btn_draft.setEnabled(mailer.OUTLOOK_AVAILABLE)
     if not mailer.OUTLOOK_AVAILABLE:
-        btn_draft.setToolTip("Outlook nicht verfuegbar")
+        btn_draft.setToolTip(parent.tr("Outlook not available"))
     ctrl_layout.addWidget(btn_draft)
 
-    btn_send = QPushButton("Senden")
+    btn_send = QPushButton(parent.tr("Send"))
     btn_send.setEnabled(mailer.OUTLOOK_AVAILABLE)
     if not mailer.OUTLOOK_AVAILABLE:
-        btn_send.setToolTip("Outlook nicht verfuegbar")
+        btn_send.setToolTip(parent.tr("Outlook not available"))
     ctrl_layout.addWidget(btn_send)
 
     ctrl_layout.addStretch()
 
-    btn_preview = QPushButton("Vorschau (Outlook)")
+    btn_preview = QPushButton(parent.tr("Preview (Outlook)"))
     btn_preview.setEnabled(mailer.OUTLOOK_AVAILABLE)
     if not mailer.OUTLOOK_AVAILABLE:
-        btn_preview.setToolTip("Outlook nicht verfuegbar")
+        btn_preview.setToolTip(parent.tr("Outlook not available"))
     ctrl_layout.addWidget(btn_preview)
     layout.addLayout(ctrl_layout)
 

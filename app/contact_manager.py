@@ -4,6 +4,8 @@ import csv
 import re
 from pathlib import Path
 
+from PyQt6.QtCore import QCoreApplication
+
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -40,17 +42,23 @@ def validate_row(row: dict[str, str], available_languages: list[str]) -> list[st
 
     email = row.get("email", "").strip()
     if not email:
-        errors.append("E-Mail fehlt")
+        errors.append(QCoreApplication.translate("ContactManager", "Email missing"))
     elif not _EMAIL_RE.match(email):
-        errors.append(f"E-Mail ungueltig: {email}")
+        errors.append(
+            QCoreApplication.translate("ContactManager", "Invalid email: {email}").format(
+                email=email
+            )
+        )
 
     language = row.get("language", "").strip()
     if not language:
-        errors.append("Sprache fehlt")
+        errors.append(QCoreApplication.translate("ContactManager", "Language missing"))
     elif language not in available_languages:
         errors.append(
-            f"Keine Vorlage fuer Sprache '{language}' "
-            f"(verfuegbar: {', '.join(available_languages)})"
+            QCoreApplication.translate(
+                "ContactManager",
+                "No template for language '{language}' (available: {available})",
+            ).format(language=language, available=", ".join(available_languages))
         )
 
     return errors

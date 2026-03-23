@@ -51,10 +51,10 @@ class TemplatesTab(QWidget):
         self._ui.btn_manage_topics.clicked.connect(self._on_manage_topics)
         self._ui.btn_manage_langs.clicked.connect(self._on_manage_languages)
         self._ui.btn_bold.clicked.connect(
-            lambda: self._insert_format("**", "**", "Fettschrift")
+            lambda: self._insert_format("**", "**", self.tr("bold text"))
         )
         self._ui.btn_italic.clicked.connect(
-            lambda: self._insert_format("*", "*", "Kursivschrift")
+            lambda: self._insert_format("*", "*", self.tr("italic text"))
         )
         self._ui.btn_link.clicked.connect(self._insert_link)
         self._ui.btn_image.clicked.connect(self._insert_image)
@@ -135,7 +135,7 @@ class TemplatesTab(QWidget):
             return
         self._ui.subject_edit.setText(tpl["subject"])
         self._ui.body_edit.setPlainText(tpl["body"])
-        self._ui.save_status_label.setText("Gespeichert")
+        self._ui.save_status_label.setText(self.tr("Saved"))
         self._ui.save_status_label.setStyleSheet("color: gray;")
         self._loading_template = False
 
@@ -144,7 +144,7 @@ class TemplatesTab(QWidget):
         self._update_placeholder_label()
         if self._loading_template:
             return
-        self._ui.save_status_label.setText("Ungespeicherte Aenderungen...")
+        self._ui.save_status_label.setText(self.tr("Unsaved changes..."))
         self._ui.save_status_label.setStyleSheet("color: orange;")
         self._save_timer.start()
 
@@ -161,7 +161,7 @@ class TemplatesTab(QWidget):
             self._ui.body_edit.toPlainText(),
             TEMPLATES_DIR,
         )
-        self._ui.save_status_label.setText("Gespeichert")
+        self._ui.save_status_label.setText(self.tr("Saved"))
         self._ui.save_status_label.setStyleSheet("color: gray;")
 
     def _on_preview_template(self) -> None:
@@ -174,17 +174,17 @@ class TemplatesTab(QWidget):
             body, topic=topic, templates_dir=TEMPLATES_DIR, **self.font_kwargs()
         )
         dlg = QDialog(self)
-        dlg.setWindowTitle("Vorlagenvorschau")
+        dlg.setWindowTitle(self.tr("Template preview"))
         dlg.resize(500, 400)
         dlg_layout = QVBoxLayout(dlg)
         subject = self._ui.subject_edit.text()
         if subject:
-            dlg_layout.addWidget(QLabel(f"<b>Betreff:</b> {subject}"))
+            dlg_layout.addWidget(QLabel(f"<b>{self.tr('Subject:')}</b> {subject}"))
         view = QTextEdit()
         view.setReadOnly(True)
         view.setHtml(html)
         dlg_layout.addWidget(view)
-        btn_close = QPushButton("Schliessen")
+        btn_close = QPushButton(self.tr("Close"))
         btn_close.clicked.connect(dlg.accept)
         dlg_layout.addWidget(btn_close)
         dlg.exec()
@@ -212,17 +212,17 @@ class TemplatesTab(QWidget):
         selected = cursor.selectedText()
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Link einfuegen")
+        dlg.setWindowTitle(self.tr("Insert link"))
         dlg_layout = QVBoxLayout(dlg)
 
-        dlg_layout.addWidget(QLabel("Anzeigetext:"))
+        dlg_layout.addWidget(QLabel(self.tr("Display text:")))
         text_edit = QLineEdit(selected if selected else "")
-        text_edit.setPlaceholderText("z.B. Hier klicken")
+        text_edit.setPlaceholderText(self.tr("e.g. Click here"))
         dlg_layout.addWidget(text_edit)
 
-        dlg_layout.addWidget(QLabel("URL:"))
+        dlg_layout.addWidget(QLabel(self.tr("URL:")))
         url_edit = QLineEdit()
-        url_edit.setPlaceholderText("z.B. https://example.com")
+        url_edit.setPlaceholderText(self.tr("e.g. https://example.com"))
         dlg_layout.addWidget(url_edit)
 
         buttons = QDialogButtonBox(
@@ -247,14 +247,14 @@ class TemplatesTab(QWidget):
         """Pick an image file, copy it to the topic's images folder, and insert a reference."""
         topic = self._ui.topic_combo.currentText()
         if not topic:
-            QMessageBox.information(self, "Bild", "Bitte zuerst ein Thema auswaehlen.")
+            QMessageBox.information(self, self.tr("Image"), self.tr("Please select a topic first."))
             return
 
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Bild auswaehlen",
+            self.tr("Select image"),
             "",
-            "Bilder (*.png *.jpg *.jpeg *.gif *.bmp)",
+            self.tr("Images (*.png *.jpg *.jpeg *.gif *.bmp)"),
         )
         if not path:
             return
@@ -267,8 +267,8 @@ class TemplatesTab(QWidget):
         if dest.exists():
             reply = QMessageBox.question(
                 self,
-                "Bild vorhanden",
-                f"'{src.name}' existiert bereits. Ueberschreiben?",
+                self.tr("Image exists"),
+                self.tr("'{name}' already exists. Overwrite?").format(name=src.name),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -276,7 +276,7 @@ class TemplatesTab(QWidget):
         shutil.copy2(src, dest)
 
         desc, ok = QInputDialog.getText(
-            self, "Bildbeschreibung", "Beschreibung (fuer Barrierefreiheit):"
+            self, self.tr("Image description"), self.tr("Description (for accessibility):")
         )
         desc = desc.strip() if ok and desc.strip() else src.stem
 
@@ -290,16 +290,16 @@ class TemplatesTab(QWidget):
         if not headers:
             QMessageBox.information(
                 self,
-                "Platzhalter",
-                "Keine Spalten vorhanden. Bitte zuerst Kontakte laden.",
+                self.tr("Placeholder"),
+                self.tr("No columns available. Please load contacts first."),
             )
             return
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Platzhalter einfuegen")
+        dlg.setWindowTitle(self.tr("Insert placeholder"))
         layout = QVBoxLayout(dlg)
 
-        layout.addWidget(QLabel("Spalte auswaehlen:"))
+        layout.addWidget(QLabel(self.tr("Select column:")))
         col_list = QListWidget()
         col_list.addItems(headers)
         col_list.setCurrentRow(0)
@@ -310,13 +310,13 @@ class TemplatesTab(QWidget):
         bool_group = QWidget()
         bool_layout = QVBoxLayout(bool_group)
         bool_layout.setContentsMargins(0, 0, 0, 0)
-        bool_layout.addWidget(QLabel("Wert wenn Ja:"))
+        bool_layout.addWidget(QLabel(self.tr("Value if Yes:")))
         true_edit = QLineEdit()
-        true_edit.setPlaceholderText("z.B. geehrter")
+        true_edit.setPlaceholderText(self.tr("e.g. Dear Mr."))
         bool_layout.addWidget(true_edit)
-        bool_layout.addWidget(QLabel("Wert wenn Nein:"))
+        bool_layout.addWidget(QLabel(self.tr("Value if No:")))
         false_edit = QLineEdit()
-        false_edit.setPlaceholderText("z.B. geehrte")
+        false_edit.setPlaceholderText(self.tr("e.g. Dear Ms."))
         bool_layout.addWidget(false_edit)
         layout.addWidget(bool_group)
 
@@ -356,7 +356,7 @@ class TemplatesTab(QWidget):
         """Open a dialog to add, rename, and delete topics."""
         old_topics = template_manager.list_topics(TEMPLATES_DIR)
         dlg = ListManagerDialog(
-            "Themen verwalten", old_topics, add_label="Neues Thema", parent=self
+            self.tr("Manage topics"), old_topics, add_label=self.tr("New topic"), parent=self
         )
         dlg.exec()
         if not dlg.was_changed():
@@ -396,7 +396,10 @@ class TemplatesTab(QWidget):
 
         old_langs = template_manager.list_languages(topic, TEMPLATES_DIR)
         dlg = ListManagerDialog(
-            f"Sprachen — {topic}", old_langs, add_label="Neue Sprache", parent=self
+            self.tr("Languages — {topic}").format(topic=topic),
+            old_langs,
+            add_label=self.tr("New language"),
+            parent=self,
         )
         dlg.exec()
         if not dlg.was_changed():
@@ -433,7 +436,7 @@ class TemplatesTab(QWidget):
         names = template_manager.extract_placeholders(text)
         if names:
             self._ui.placeholder_label.setText(
-                "Platzhalter: " + ", ".join(f"{{{n}}}" for n in names)
+                self.tr("Placeholders:") + " " + ", ".join(f"{{{n}}}" for n in names)
             )
         else:
-            self._ui.placeholder_label.setText("Keine Platzhalter gefunden.")
+            self._ui.placeholder_label.setText(self.tr("No placeholders found."))

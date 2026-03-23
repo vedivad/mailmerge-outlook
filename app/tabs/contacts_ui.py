@@ -32,12 +32,12 @@ def build(parent: QWidget) -> ContactsWidgets:
     top_layout = QHBoxLayout()
 
     search = QLineEdit()
-    search.setPlaceholderText("Kontakte filtern...")
+    search.setPlaceholderText(parent.tr("Filter contacts..."))
     search.setClearButtonEnabled(True)
     top_layout.addWidget(search)
 
-    btn_import = QPushButton("CSV importieren")
-    btn_export = QPushButton("CSV exportieren")
+    btn_import = QPushButton(parent.tr("Import CSV"))
+    btn_export = QPushButton(parent.tr("Export CSV"))
     for btn in (btn_import, btn_export):
         top_layout.addWidget(btn)
 

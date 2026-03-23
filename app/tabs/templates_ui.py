@@ -43,40 +43,40 @@ def build(parent: QWidget) -> TemplatesWidgets:
     # Topic + Language selector row
     sel_layout = QHBoxLayout()
 
-    sel_layout.addWidget(QLabel("Thema:"))
+    sel_layout.addWidget(QLabel(parent.tr("Topic:")))
     topic_combo = QComboBox()
     sel_layout.addWidget(topic_combo)
 
     btn_manage_topics = QPushButton("\u2699")
     btn_manage_topics.setFixedWidth(28)
-    btn_manage_topics.setToolTip("Themen verwalten")
+    btn_manage_topics.setToolTip(parent.tr("Manage topics"))
     sel_layout.addWidget(btn_manage_topics)
 
-    sel_layout.addWidget(QLabel("Sprache:"))
+    sel_layout.addWidget(QLabel(parent.tr("Language:")))
     lang_combo = QComboBox()
     sel_layout.addWidget(lang_combo)
 
     btn_manage_langs = QPushButton("\u2699")
     btn_manage_langs.setFixedWidth(28)
-    btn_manage_langs.setToolTip("Sprachen verwalten")
+    btn_manage_langs.setToolTip(parent.tr("Manage languages"))
     sel_layout.addWidget(btn_manage_langs)
 
     sel_layout.addStretch()
     layout.addLayout(sel_layout)
 
     # Subject
-    layout.addWidget(QLabel("Betreff:"))
+    layout.addWidget(QLabel(parent.tr("Subject:")))
     subject_edit = QLineEdit()
     layout.addWidget(subject_edit)
 
     # Body
-    layout.addWidget(QLabel("Inhalt:"))
+    layout.addWidget(QLabel(parent.tr("Body:")))
 
     # Formatting toolbar
     fmt_layout = QHBoxLayout()
 
     font_combo = QComboBox()
-    font_combo.setToolTip("Schriftart")
+    font_combo.setToolTip(parent.tr("Font"))
     for label, css in [
         ("Calibri", "'Calibri', Arial, sans-serif"),
         ("Arial", "'Arial', sans-serif"),
@@ -94,7 +94,7 @@ def build(parent: QWidget) -> TemplatesWidgets:
     fmt_layout.addWidget(font_combo)
 
     font_size_combo = QComboBox()
-    font_size_combo.setToolTip("Schriftgroesse")
+    font_size_combo.setToolTip(parent.tr("Font size"))
     for size in ["8pt", "9pt", "10pt", "11pt", "12pt", "14pt", "16pt", "18pt"]:
         font_size_combo.addItem(size)
     font_size_combo.setCurrentText("10pt")
@@ -103,21 +103,21 @@ def build(parent: QWidget) -> TemplatesWidgets:
     btn_bold = QPushButton("B")
     btn_bold.setFixedWidth(32)
     btn_bold.setStyleSheet("font-weight: bold;")
-    btn_bold.setToolTip("Fett")
+    btn_bold.setToolTip(parent.tr("Bold"))
 
     btn_italic = QPushButton("I")
     btn_italic.setFixedWidth(32)
     btn_italic.setStyleSheet("font-style: italic;")
-    btn_italic.setToolTip("Kursiv")
+    btn_italic.setToolTip(parent.tr("Italic"))
 
     btn_link = QPushButton("Link")
-    btn_link.setToolTip("Link einfuegen")
+    btn_link.setToolTip(parent.tr("Insert link"))
 
-    btn_image = QPushButton("Bild")
-    btn_image.setToolTip("Bild einfuegen")
+    btn_image = QPushButton(parent.tr("Image"))
+    btn_image.setToolTip(parent.tr("Insert image"))
 
     btn_placeholder = QPushButton("{x}")
-    btn_placeholder.setToolTip("Platzhalter einfuegen")
+    btn_placeholder.setToolTip(parent.tr("Insert placeholder"))
 
     for btn in (btn_bold, btn_italic, btn_link, btn_image, btn_placeholder):
         fmt_layout.addWidget(btn)
@@ -141,7 +141,7 @@ def build(parent: QWidget) -> TemplatesWidgets:
 
     bottom_layout.addStretch()
 
-    btn_preview = QPushButton("Vorschau")
+    btn_preview = QPushButton(parent.tr("Preview"))
     bottom_layout.addWidget(btn_preview)
 
     layout.addLayout(bottom_layout)

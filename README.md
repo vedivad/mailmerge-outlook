@@ -39,6 +39,20 @@ python main.py
 
 The GUI launches fully on Linux. Send functionality is disabled since Outlook is unavailable.
 
+## Language
+
+- The app supports English and German UI text.
+- Use the menu bar: `Language` -> `English` / `German`.
+- Switching language prompts for restart and then relaunches the app.
+
+Compile the Qt translation source to runtime format:
+
+```bash
+lrelease translations/de.ts -qm translations/de.qm
+```
+
+If `de.qm` is missing, the app falls back to source-language strings.
+
 ## Build (Windows)
 
 ```
