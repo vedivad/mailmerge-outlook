@@ -20,6 +20,7 @@ class ContactsWidgets:
     search: QLineEdit
     btn_import: QPushButton
     btn_export: QPushButton
+    btn_reorder: QPushButton
     save_status: QLabel
     lang_tabs: QTabWidget
 
@@ -38,7 +39,8 @@ def build(parent: QWidget) -> ContactsWidgets:
 
     btn_import = QPushButton("CSV importieren")
     btn_export = QPushButton("CSV exportieren")
-    for btn in (btn_import, btn_export):
+    btn_reorder = QPushButton("Spalten ordnen")
+    for btn in (btn_import, btn_export, btn_reorder):
         top_layout.addWidget(btn)
 
     save_status = QLabel()
@@ -54,6 +56,7 @@ def build(parent: QWidget) -> ContactsWidgets:
         search=search,
         btn_import=btn_import,
         btn_export=btn_export,
+        btn_reorder=btn_reorder,
         save_status=save_status,
         lang_tabs=lang_tabs,
     )

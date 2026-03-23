@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLineEdit,
+    QListWidget,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -150,3 +152,78 @@ class ContactPickerDialog(QDialog):
     def selected_contacts(self) -> list[dict[str, str]]:
         """Return the contacts chosen by the user."""
         return self._selected
+
+
+class ColumnReorderDialog(QDialog):
+    """Dialog for reordering table columns via up/down buttons."""
+
+    def __init__(self, headers: list[str], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Spalten ordnen")
+        self.resize(350, 400)
+        self._result_order: list[str] = list(headers)
+
+        layout = QHBoxLayout(self)
+
+        # Column list
+        self._list = QListWidget()
+        self._list.addItems(headers)
+        if headers:
+            self._list.setCurrentRow(0)
+        layout.addWidget(self._list)
+
+        # Button column
+        btn_layout = QVBoxLayout()
+        btn_layout.addStretch()
+
+        btn_up = QPushButton("\u25b2")
+        btn_up.setToolTip("Nach oben")
+        btn_up.setFixedWidth(40)
+        btn_up.clicked.connect(self._move_up)
+        btn_layout.addWidget(btn_up)
+
+        btn_down = QPushButton("\u25bc")
+        btn_down.setToolTip("Nach unten")
+        btn_down.setFixedWidth(40)
+        btn_down.clicked.connect(self._move_down)
+        btn_layout.addWidget(btn_down)
+
+        btn_layout.addStretch()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        btn_layout.addWidget(buttons)
+
+        layout.addLayout(btn_layout)
+
+    def _move_up(self) -> None:
+        """Move the selected item up one position."""
+        row = self._list.currentRow()
+        if row <= 0:
+            return
+        item = self._list.takeItem(row)
+        self._list.insertItem(row - 1, item)
+        self._list.setCurrentRow(row - 1)
+
+    def _move_down(self) -> None:
+        """Move the selected item down one position."""
+        row = self._list.currentRow()
+        if row < 0 or row >= self._list.count() - 1:
+            return
+        item = self._list.takeItem(row)
+        self._list.insertItem(row + 1, item)
+        self._list.setCurrentRow(row + 1)
+
+    def _on_accept(self) -> None:
+        """Store the new order and accept."""
+        self._result_order = [
+            self._list.item(i).text() for i in range(self._list.count())
+        ]
+        self.accept()
+
+    def result_order(self) -> list[str]:
+        """Return the column names in the user-chosen order."""
+        return self._result_order

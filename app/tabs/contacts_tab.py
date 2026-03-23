@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 from app import contact_manager, template_manager
 from app.config import DEFAULT_CSV, PROJECT_DIR, TEMPLATES_DIR
 from app.tabs import contacts_ui
-from app.widgets import ExcelTable
+from app.widgets import ColumnReorderDialog, ExcelTable
 
 
 class ContactsTab(QWidget):
@@ -39,6 +39,7 @@ class ContactsTab(QWidget):
         self._ui.search.textChanged.connect(self._on_contacts_filter_changed)
         self._ui.btn_import.clicked.connect(self._on_import_csv)
         self._ui.btn_export.clicked.connect(self._on_export_csv)
+        self._ui.btn_reorder.clicked.connect(self._on_reorder_columns)
 
         # Auto-save timer (debounce 500ms)
         self._save_timer = QTimer()
@@ -296,16 +297,6 @@ class ContactsTab(QWidget):
             rename_action.triggered.connect(lambda: self._rename_column(col))
             menu.addAction(rename_action)
 
-            if col > 0:
-                move_left = QAction(f"Spalte '{col_name}' nach links", self)
-                move_left.triggered.connect(lambda: self._move_column(col, col - 1))
-                menu.addAction(move_left)
-
-            if col < len(self._headers) - 1:
-                move_right = QAction(f"Spalte '{col_name}' nach rechts", self)
-                move_right.triggered.connect(lambda: self._move_column(col, col + 1))
-                menu.addAction(move_right)
-
             if col_name.lower() != "email":
                 remove_action = QAction(f"Spalte '{col_name}' entfernen", self)
                 remove_action.triggered.connect(lambda: self._remove_column(col))
@@ -313,30 +304,40 @@ class ContactsTab(QWidget):
 
         menu.exec(header.mapToGlobal(pos))
 
-    def _move_column(self, old_col: int, new_col: int) -> None:
-        """Move a column from *old_col* to *new_col* across all language tables."""
-        if old_col == new_col:
+    def _on_reorder_columns(self) -> None:
+        """Open the column reorder dialog and apply the result."""
+        if not self._headers:
             return
-        # Swap in headers
-        self._headers[old_col], self._headers[new_col] = (
-            self._headers[new_col],
-            self._headers[old_col],
-        )
-        # Swap cell data in every table
+        dialog = ColumnReorderDialog(self._headers, parent=self)
+        if dialog.exec() != ColumnReorderDialog.DialogCode.Accepted:
+            return
+        new_order = dialog.result_order()
+        if new_order == self._headers:
+            return
+        self._apply_column_order(new_order)
+
+    def _apply_column_order(self, new_order: list[str]) -> None:
+        """Rearrange columns in all language tables to match *new_order*."""
+        index_map = [self._headers.index(name) for name in new_order]
+        self._headers = new_order
+
         for table in self._lang_tables.values():
             table.blockSignals(True)
             for r in range(table.rowCount()):
-                item_a = table.item(r, old_col)
-                item_b = table.item(r, new_col)
-                text_a = item_a.text() if item_a else ""
-                text_b = item_b.text() if item_b else ""
-                if item_a:
-                    item_a.setText(text_b)
-                if item_b:
-                    item_b.setText(text_a)
+                old_texts = [
+                    (table.item(r, c).text() if table.item(r, c) else "")
+                    for c in range(table.columnCount())
+                ]
+                for c, old_c in enumerate(index_map):
+                    item = table.item(r, c)
+                    if item:
+                        item.setText(old_texts[old_c])
+                    else:
+                        table.setItem(r, c, QTableWidgetItem(old_texts[old_c]))
             table.setHorizontalHeaderLabels(self._headers)
             table.blockSignals(False)
             self._validate_table(table)
+
         self._schedule_contacts_save()
 
     def _remove_column(self, col: int) -> None:
