@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 from app import template_manager
 from app.config import TEMPLATES_DIR
 from app.tabs import templates_ui
+from app.widgets import ListManagerDialog
 
 
 class TemplatesTab(QWidget):
@@ -47,8 +48,8 @@ class TemplatesTab(QWidget):
         self._ui.lang_combo.currentTextChanged.connect(
             self._on_template_selection_changed
         )
-        self._ui.btn_new_topic.clicked.connect(self._on_new_topic)
-        self._ui.btn_new_lang.clicked.connect(self._on_new_language)
+        self._ui.btn_manage_topics.clicked.connect(self._on_manage_topics)
+        self._ui.btn_manage_langs.clicked.connect(self._on_manage_languages)
         self._ui.btn_bold.clicked.connect(
             lambda: self._insert_format("**", "**", "Fettschrift")
         )
@@ -351,33 +352,80 @@ class TemplatesTab(QWidget):
             cursor.insertText(f"{{{col_name}}}")
         self._ui.body_edit.setFocus()
 
-    def _on_new_topic(self) -> None:
-        """Prompt for a new topic name."""
-        name, ok = QInputDialog.getText(
-            self, "Neues Thema", "Themenname (z.B. partnerschaft, nachfassung):"
+    def _on_manage_topics(self) -> None:
+        """Open a dialog to add, rename, and delete topics."""
+        old_topics = template_manager.list_topics(TEMPLATES_DIR)
+        dlg = ListManagerDialog(
+            "Themen verwalten", old_topics, add_label="Neues Thema", parent=self
         )
-        if ok and name.strip():
-            name = name.strip().lower().replace(" ", "-")
-            langs = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
-            first_lang = langs[0] if langs else "en"
-            template_manager.save_template(name, first_lang, "", "", TEMPLATES_DIR)
-            self.templates_changed.emit()
-            self._ui.topic_combo.setCurrentText(name)
+        dlg.exec()
+        if not dlg.was_changed():
+            return
 
-    def _on_new_language(self) -> None:
-        """Prompt for a new language code within the current topic."""
+        new_topics = dlg.result_items()
+        old_set = set(old_topics)
+        new_set = set(new_topics)
+
+        # Delete removed topics
+        for name in old_set - new_set:
+            path = TEMPLATES_DIR / name
+            if path.is_dir():
+                shutil.rmtree(path)
+
+        # Add new topics
+        langs = template_manager.list_languages(templates_dir=TEMPLATES_DIR)
+        first_lang = langs[0] if langs else "en"
+        for name in new_set - old_set:
+            template_manager.save_template(name, first_lang, "", "", TEMPLATES_DIR)
+
+        # Rename: items present in both but at same position with different name
+        for old_name, new_name in zip(old_topics, new_topics):
+            if old_name != new_name and old_name in old_set and new_name not in old_set:
+                old_path = TEMPLATES_DIR / old_name
+                new_path = TEMPLATES_DIR / new_name
+                if old_path.is_dir() and not new_path.exists():
+                    old_path.rename(new_path)
+
+        self.templates_changed.emit()
+
+    def _on_manage_languages(self) -> None:
+        """Open a dialog to add, rename, and delete languages for the current topic."""
         topic = self._ui.topic_combo.currentText()
         if not topic:
             return
-        code, ok = QInputDialog.getText(
-            self, "Neue Sprache", "Sprachcode (z.B. fr, es):"
+
+        old_langs = template_manager.list_languages(topic, TEMPLATES_DIR)
+        dlg = ListManagerDialog(
+            f"Sprachen — {topic}", old_langs, add_label="Neue Sprache", parent=self
         )
-        if ok and code.strip():
-            code = code.strip().lower()
-            template_manager.save_template(topic, code, "", "", TEMPLATES_DIR)
-            self.templates_changed.emit()
-            self._ui.topic_combo.setCurrentText(topic)
-            self._ui.lang_combo.setCurrentText(code)
+        dlg.exec()
+        if not dlg.was_changed():
+            return
+
+        new_langs = dlg.result_items()
+        old_set = set(old_langs)
+        new_set = set(new_langs)
+
+        # Delete removed languages
+        for lang in old_set - new_set:
+            path = TEMPLATES_DIR / topic / f"{lang}.txt"
+            if path.exists():
+                path.unlink()
+
+        # Add new languages
+        for lang in new_set - old_set:
+            template_manager.save_template(topic, lang, "", "", TEMPLATES_DIR)
+
+        # Rename
+        for old_lang, new_lang in zip(old_langs, new_langs):
+            if old_lang != new_lang and old_lang in old_set and new_lang not in old_set:
+                old_path = TEMPLATES_DIR / topic / f"{old_lang}.txt"
+                new_path = TEMPLATES_DIR / topic / f"{new_lang}.txt"
+                if old_path.exists() and not new_path.exists():
+                    old_path.rename(new_path)
+
+        self.templates_changed.emit()
+        self._ui.topic_combo.setCurrentText(topic)
 
     def _update_placeholder_label(self) -> None:
         """Show placeholders found in the current subject + body."""

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -278,3 +279,119 @@ class ColumnReorderDialog(QDialog):
     def result_order(self) -> list[str]:
         """Return the column names in the user-chosen order."""
         return self._result_order
+
+
+class ListManagerDialog(QDialog):
+    """Dialog for managing a list of named items (add, rename, delete)."""
+
+    def __init__(
+        self,
+        title: str,
+        items: list[str],
+        add_label: str = "Hinzufuegen",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(350, 350)
+        self._changed = False
+
+        layout = QHBoxLayout(self)
+
+        self._list = QListWidget()
+        self._list.addItems(items)
+        if items:
+            self._list.setCurrentRow(0)
+        layout.addWidget(self._list)
+
+        btn_layout = QVBoxLayout()
+
+        btn_add = QPushButton(add_label)
+        btn_add.clicked.connect(self._on_add)
+        btn_layout.addWidget(btn_add)
+
+        btn_rename = QPushButton("Umbenennen")
+        btn_rename.clicked.connect(self._on_rename)
+        btn_layout.addWidget(btn_rename)
+
+        btn_delete = QPushButton("Loeschen")
+        btn_delete.clicked.connect(self._on_delete)
+        btn_layout.addWidget(btn_delete)
+
+        btn_layout.addStretch()
+
+        btn_close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btn_close.rejected.connect(self.accept)
+        btn_layout.addWidget(btn_close)
+
+        layout.addLayout(btn_layout)
+
+        self._add_label = add_label
+
+    def _on_add(self) -> None:
+        """Prompt for a new item name and add it."""
+        from PyQt6.QtWidgets import QInputDialog
+
+        name, ok = QInputDialog.getText(self, self._add_label, "Name:")
+        if not ok or not name.strip():
+            return
+        name = name.strip().lower().replace(" ", "-")
+        existing = [self._list.item(i).text() for i in range(self._list.count())]
+        if name in existing:
+            QMessageBox.information(
+                self, self._add_label, f"'{name}' existiert bereits."
+            )
+            return
+        self._list.addItem(name)
+        self._list.setCurrentRow(self._list.count() - 1)
+        self._changed = True
+
+    def _on_rename(self) -> None:
+        """Rename the selected item."""
+        from PyQt6.QtWidgets import QInputDialog
+
+        row = self._list.currentRow()
+        if row < 0:
+            return
+        old_name = self._list.item(row).text()
+        new_name, ok = QInputDialog.getText(
+            self, "Umbenennen", f"Neuer Name fuer '{old_name}':", text=old_name
+        )
+        if not ok or not new_name.strip():
+            return
+        new_name = new_name.strip().lower().replace(" ", "-")
+        if new_name == old_name:
+            return
+        existing = [self._list.item(i).text() for i in range(self._list.count())]
+        if new_name in existing:
+            QMessageBox.information(
+                self, "Umbenennen", f"'{new_name}' existiert bereits."
+            )
+            return
+        self._list.item(row).setText(new_name)
+        self._changed = True
+
+    def _on_delete(self) -> None:
+        """Delete the selected item."""
+        row = self._list.currentRow()
+        if row < 0:
+            return
+        name = self._list.item(row).text()
+        reply = QMessageBox.question(
+            self,
+            "Loeschen",
+            f"'{name}' wirklich loeschen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._list.takeItem(row)
+        self._changed = True
+
+    def result_items(self) -> list[str]:
+        """Return the current list of item names."""
+        return [self._list.item(i).text() for i in range(self._list.count())]
+
+    def was_changed(self) -> bool:
+        """Return True if any add/rename/delete was performed."""
+        return self._changed

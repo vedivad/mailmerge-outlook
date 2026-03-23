@@ -29,8 +29,8 @@ class TemplatesWidgets:
     btn_link: QPushButton
     btn_image: QPushButton
     btn_placeholder: QPushButton
-    btn_new_topic: QPushButton
-    btn_new_lang: QPushButton
+    btn_manage_topics: QPushButton
+    btn_manage_langs: QPushButton
     btn_preview: QPushButton
     save_status_label: QLabel
     placeholder_label: QLabel
@@ -47,15 +47,19 @@ def build(parent: QWidget) -> TemplatesWidgets:
     topic_combo = QComboBox()
     sel_layout.addWidget(topic_combo)
 
-    btn_new_topic = QPushButton("Neues Thema")
-    sel_layout.addWidget(btn_new_topic)
+    btn_manage_topics = QPushButton("\u2699")
+    btn_manage_topics.setFixedWidth(28)
+    btn_manage_topics.setToolTip("Themen verwalten")
+    sel_layout.addWidget(btn_manage_topics)
 
     sel_layout.addWidget(QLabel("Sprache:"))
     lang_combo = QComboBox()
     sel_layout.addWidget(lang_combo)
 
-    btn_new_lang = QPushButton("Neue Sprache")
-    sel_layout.addWidget(btn_new_lang)
+    btn_manage_langs = QPushButton("\u2699")
+    btn_manage_langs.setFixedWidth(28)
+    btn_manage_langs.setToolTip("Sprachen verwalten")
+    sel_layout.addWidget(btn_manage_langs)
 
     sel_layout.addStretch()
     layout.addLayout(sel_layout)
@@ -154,8 +158,8 @@ def build(parent: QWidget) -> TemplatesWidgets:
         btn_link=btn_link,
         btn_image=btn_image,
         btn_placeholder=btn_placeholder,
-        btn_new_topic=btn_new_topic,
-        btn_new_lang=btn_new_lang,
+        btn_manage_topics=btn_manage_topics,
+        btn_manage_langs=btn_manage_langs,
         btn_preview=btn_preview,
         save_status_label=save_status_label,
         placeholder_label=placeholder_label,
