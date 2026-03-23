@@ -291,6 +291,11 @@ class ContactsTab(QWidget):
 
         if col >= 0:
             col_name = self._headers[col] if col < len(self._headers) else ""
+
+            rename_action = QAction(f"Spalte '{col_name}' umbenennen", self)
+            rename_action.triggered.connect(lambda: self._rename_column(col))
+            menu.addAction(rename_action)
+
             if col_name.lower() != "email":
                 remove_action = QAction(f"Spalte '{col_name}' entfernen", self)
                 remove_action.triggered.connect(lambda: self._remove_column(col))
@@ -315,6 +320,34 @@ class ContactsTab(QWidget):
         for table in self._lang_tables.values():
             table.blockSignals(True)
             table.removeColumn(col)
+            table.setHorizontalHeaderLabels(self._headers)
+            table.blockSignals(False)
+        self._schedule_contacts_save()
+
+    def _rename_column(self, col: int) -> None:
+        """Rename a column across all language tables and headers."""
+        if col < 0 or col >= len(self._headers):
+            return
+        old_name = self._headers[col]
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Spalte umbenennen",
+            f"Neuer Name fuer Spalte '{old_name}':",
+            text=old_name,
+        )
+        if not ok or not new_name.strip():
+            return
+        new_name = new_name.strip()
+        if new_name == old_name:
+            return
+        if new_name in self._headers:
+            QMessageBox.information(
+                self, "Spalte umbenennen", f"Spalte '{new_name}' existiert bereits."
+            )
+            return
+        self._headers[col] = new_name
+        for table in self._lang_tables.values():
+            table.blockSignals(True)
             table.setHorizontalHeaderLabels(self._headers)
             table.blockSignals(False)
         self._schedule_contacts_save()
