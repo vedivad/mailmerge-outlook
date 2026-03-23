@@ -46,7 +46,6 @@ class ContactsTab(QWidget):
         self._ui.search.textChanged.connect(self._on_contacts_filter_changed)
         self._ui.btn_import.clicked.connect(self._on_import_csv)
         self._ui.btn_export.clicked.connect(self._on_export_csv)
-        self._ui.btn_reorder.clicked.connect(self._on_reorder_columns)
 
         # Auto-save timer (debounce 500ms)
         self._save_timer = QTimer()
@@ -390,6 +389,10 @@ class ContactsTab(QWidget):
         add_action = QAction("Spalte hinzufuegen", self)
         add_action.triggered.connect(self._on_add_column)
         menu.addAction(add_action)
+
+        reorder_action = QAction("Spalten ordnen", self)
+        reorder_action.triggered.connect(self._on_reorder_columns)
+        menu.addAction(reorder_action)
 
         if col >= 0:
             col_name = self._headers[col] if col < len(self._headers) else ""
