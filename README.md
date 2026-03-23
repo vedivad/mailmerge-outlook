@@ -1,22 +1,19 @@
 # MailMerge
 
-A PyQt6 desktop application that sends personalized bulk emails through Microsoft Outlook on Windows.
+A PyQt6 desktop app for personalized bulk email from CSV contacts and per-language templates.
 
 ## Features
 
-- **Contact management** — CSV-based with language sub-tabs, search/filter, validation, and inline editing (copy/paste, multi-row delete)
-- **Template system** — per-topic, per-language email templates with Markdown formatting, image embedding, and font control
-- **Placeholders** — `{name}`, `{company}`, etc. are resolved per contact from CSV columns
-- **Boolean columns** — columns ending with `?` (e.g. `formal?`) render as checkboxes and support conditional template syntax: `{formal?:Sehr geehrte:Liebe}`
-- **Jinja2 support** — full Jinja2 syntax (`{% if %}`, `{{ }}`) available for advanced templates alongside the simple shorthand
-- **Column management** — add, rename, delete, and reorder columns via the header context menu
-- **Topic & language management** — add, rename, and delete templates from a management dialog
-- **Send modes** — dry-run (preview), draft (save to Outlook drafts), and send, with per-email progress and logging
-- **Outlook preview** — open a single email in Outlook for inspection before bulk sending
+- CSV contact management with validation and per-language tabs
+- Topic/language template editor with placeholders and Markdown/Jinja2 support
+- Inline image support in templates (`image:filename`)
+- Send modes: Dry run, Send, and Draft (provider-dependent)
+- Delivery backends: Outlook (Windows) and SMTP (cross-platform)
+- UI localization: English and German
 
 ## Template Format
 
-Templates are stored in `templates/<topic>/<language>.txt`:
+Templates live in `templates/<topic>/<language>.txt`:
 
 ```
 Subject line with {placeholders}
@@ -37,44 +34,37 @@ pip install -r requirements.txt
 python main.py
 ```
 
-The GUI launches fully on Linux. Send functionality is disabled since Outlook is unavailable.
+The GUI runs fully on Linux. Outlook sending is unavailable on Linux, but SMTP works when configured.
+
+## Delivery Setup
+
+Open `Settings` -> `Email delivery...` and choose:
+
+- `Outlook`: Windows + Outlook + pywin32
+- `SMTP`: host, port, sender, credentials, TLS options
+
+After saving delivery settings, restart the app when prompted.
+
+Provider capabilities:
+
+- Outlook: Dry run, Send, Draft, Preview
+- SMTP: Dry run, Send
 
 ## Language
 
-- The app supports English and German UI text.
-- Use the menu bar: `Language` -> `English` / `German`.
-- Switching language prompts for restart and then relaunches the app.
+Use `Language` -> `English` / `German` in the menu bar. Changing language requires restart.
 
-Compile the Qt translation source to runtime format:
+Compile translations:
 
 ```bash
 lrelease translations/de.ts -qm translations/de.qm
 ```
 
-If `de.qm` is missing, the app falls back to source-language strings.
-
-## Delivery Providers
-
-The app supports multiple delivery backends:
-
-- `outlook` (default) — Outlook COM on Windows
-- `smtp` — standard SMTP server (cross-platform)
-
-Configure provider from the UI:
-
-- Menu: `Settings` -> `Email delivery...`
-- Choose `Outlook` or `SMTP`
-- For SMTP, enter host, port, from address, credentials, and TLS options
-- The app prompts for restart after saving
-
-Notes:
-
-- SMTP backend supports `Send` and `Dry run`.
-- `Draft` and Outlook compose `Preview` are Outlook-only features.
+If `translations/de.qm` is missing, German falls back to source strings.
 
 ## Build (Windows)
 
-```
+```bash
 build.bat
 ```
 
